@@ -133,16 +133,6 @@ export const STORAGE = {
     }
 };
 
-/** a short description of the storage above, for the help panel */
-export const MAILBOXES = [
-    { name: 'INBOX', note: '5 messages, 2 unread' },
-    { name: 'Sent', note: '1 message' },
-    { name: 'Archive', note: 'empty' },
-    { name: 'Drafts', note: 'empty' },
-    { name: 'Trash', note: 'empty' },
-    { name: 'Projects/ImapKit', note: 'empty' }
-];
-
 const APPEND_MESSAGE =
     ['From: testuser@example.com', 'To: alice@example.com', 'Subject: Sent from the playground', '', 'Hello from the browser!'].join('\r\n') + '\r\n';
 

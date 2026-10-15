@@ -22,11 +22,51 @@ export interface SessionInfo {
     enabled: string[];
 }
 
+/** A mailbox as `server.control.listMailboxes()` describes it */
+export interface MailboxInfo {
+    path: string;
+    delimiter: string;
+    flags: string[];
+    selectable: boolean;
+    messages: number;
+    unseen: number;
+    uidvalidity: number;
+    specialUse?: string[];
+}
+
+/** A message as `server.control.listMessages()` describes it */
+export interface MessageInfo {
+    uid: number;
+    flags: string[];
+    internaldate: string;
+    size: number;
+    raw?: Uint8Array;
+}
+
+/** The parts of the control API the storage manager uses, see "Control API" in the README */
+export interface Control {
+    listMailboxes(): MailboxInfo[];
+    listMessages(path: string, options?: { raw?: boolean }): MessageInfo[];
+    getMessage(path: string, uid: number): MessageInfo;
+    addMessage(path: string, message: { raw: Uint8Array; flags?: string[]; internaldate?: Date }, options?: { checks?: boolean }): { uid: number };
+    setFlags(path: string, uids: number[], flags: string[], mode: 'set' | 'add' | 'remove'): unknown;
+    expungeMessages(path: string, uids: number[]): number[];
+    moveMessages(path: string, uids: number[], target: string): unknown;
+    copyMessages(path: string, uids: number[], target: string): unknown;
+    createMailbox(path: string, options?: { subscribed?: boolean }): MailboxInfo;
+    renameMailbox(path: string, newPath: string): MailboxInfo;
+    deleteMailbox(path: string): void;
+    reset(): void;
+}
+
 export interface ImapServer {
     connect(options?: { secure?: boolean }): MemorySocket;
     close(callback?: () => void): void;
     on(event: 'session', listener: (event: { type: string; session: SessionInfo }) => void): void;
+    on(event: 'command' | 'mailbox' | 'notify' | 'reset', listener: () => void): void;
+    off(event: string, listener: (...args: never[]) => void): void;
     sessionCounter: number;
+    control: Control;
 }
 
 export type ImapKitFactory = (options: { plugins: string[]; storage?: unknown }) => ImapServer;

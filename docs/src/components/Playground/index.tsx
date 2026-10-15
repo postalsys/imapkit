@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import { ALL_EXTENSIONS, CONFLICTS, GROUPS, PRESETS, RECOMMENDED, impliedBy, labelOf } from './catalog';
 import { COMMANDS, TerminalSession } from './session';
 import type { ImapKitFactory, ImapServer } from './session';
-import { APPEND_COMMAND, MAILBOXES, STORAGE } from './storage';
+import { APPEND_COMMAND, STORAGE } from './storage';
+import StorageManager, { hasFiles, treeOrder, uploadFiles, useServerChanges } from './StorageManager';
+import { decodeMailboxName } from './mail';
 import styles from './styles.module.css';
 
 const MAX_SESSIONS = 4;
@@ -183,6 +185,11 @@ export default function Playground(): ReactNode {
     const [focusedNumber, setFocusedNumber] = useState(0);
     const [panel, setPanel] = useState<'setup' | 'help' | null>(null);
     const [toast, setToast] = useState<string | null>(null);
+    const [tab, setTab] = useState<'terminal' | 'storage'>('terminal');
+    // the folder of the storage tab, where uploads go
+    const [folder, setFolder] = useState('INBOX');
+    const [fileDrag, setFileDrag] = useState(false);
+    const dragDepth = useRef(0);
     const [, setTick] = useState(0);
     const rerender = useCallback(() => setTick(tick => tick + 1), []);
     // the server and its sessions for event handlers, which outlive a render
@@ -262,7 +269,7 @@ export default function Playground(): ReactNode {
         if (!toast) {
             return;
         }
-        const timer = setTimeout(() => setToast(null), 2200);
+        const timer = setTimeout(() => setToast(null), Math.max(2200, toast.length * 60));
         return () => clearTimeout(timer);
     }, [toast]);
 
@@ -308,12 +315,55 @@ export default function Playground(): ReactNode {
         );
     };
 
+    const upload = (files: File[], target: string) => {
+        if (!server) {
+            return;
+        }
+        uploadFiles(server.control, files, target).then(setToast, (err: Error) => setToast(err.message));
+    };
+
+    // .eml files dropped anywhere on the page go to the folder of the storage tab, a folder in the tree takes its own
+    const dragHandlers = {
+        onDragEnter: (event: DragEvent) => {
+            if (hasFiles(event) && server) {
+                dragDepth.current++;
+                setFileDrag(true);
+            }
+        },
+        onDragLeave: (event: DragEvent) => {
+            if (hasFiles(event) && --dragDepth.current <= 0) {
+                dragDepth.current = 0;
+                setFileDrag(false);
+            }
+        },
+        onDragOver: (event: DragEvent) => {
+            if (hasFiles(event) && server) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+            }
+        },
+        onDrop: (event: DragEvent) => {
+            dragDepth.current = 0;
+            setFileDrag(false);
+            if (hasFiles(event) && server) {
+                event.preventDefault();
+                upload(Array.from(event.dataTransfer.files), folder);
+            }
+        }
+    };
+
+    const openFolder = (path: string) => {
+        setFolder(path);
+        setTab('storage');
+        setPanel(null);
+    };
+
     const focused = sessions.find(session => session.number === focusedNumber) || sessions[0];
     const suggestions = focused ? suggestionsFor(focused, loaded) : [];
     const ready = !!factory && !!server;
 
     return (
-        <div className={styles.app}>
+        <div className={clsx(styles.app, fileDrag && styles.fileDrag)} {...dragHandlers}>
             <div className={styles.toolbar}>
                 <div className={styles.titleBlock}>
                     <h1 className={styles.title}>Try ImapKit live</h1>
@@ -367,56 +417,98 @@ export default function Playground(): ReactNode {
                         </div>
                     )}
                     {!factory && !loadError && <div className={clsx(styles.pane, styles.loading)}>Starting the server…</div>}
-                    <div className={clsx(styles.panes, sessions.length > 1 && styles.split)}>
-                        {sessions.map(session => (
-                            <TerminalPane
-                                key={session.id}
-                                session={session}
-                                focused={session === focused}
-                                multiple={sessions.length > 1}
-                                onFocus={() => setFocusedNumber(session.number)}
-                                onReconnect={() => reconnect(session)}
-                                onClose={() => closeSession(session)}
-                            />
-                        ))}
-                    </div>
-                    {suggestions.length > 0 && (
-                        <div className={styles.suggestions} aria-label="Suggested commands">
-                            <span className={styles.suggestionsLabel}>{sessions.length > 1 ? 'Try in session ' + focused.number : 'Try'}</span>
-                            <div className={styles.chips}>
-                                {suggestions.map((suggestion, index) => (
-                                    <button
-                                        type="button"
-                                        key={suggestion.command}
-                                        className={clsx(styles.chip, index === 0 && focused.info.state === 'Not Authenticated' && styles.chipPrimary)}
-                                        title={(suggestion.hint ? suggestion.hint + ': ' : '') + suggestion.command.split('\r\n')[0]}
-                                        onClick={() => {
-                                            focused.run(suggestion.command);
-                                            focused.focusInput?.();
-                                        }}
-                                    >
-                                        {suggestion.label}
-                                    </button>
-                                ))}
-                                {focused.idling && sessions.length === 1 && (
-                                    <button type="button" className={clsx(styles.chip, styles.chipAction)} onClick={openSession}>
-                                        Open a second session to make changes
-                                    </button>
-                                )}
-                            </div>
+                    {server && (
+                        <div className={styles.tabs} role="tablist" aria-label="View">
+                            <button
+                                type="button"
+                                role="tab"
+                                id="pg-tab-terminal"
+                                aria-selected={tab === 'terminal'}
+                                aria-controls="pg-panel-terminal"
+                                className={clsx(styles.tab, tab === 'terminal' && styles.tabActive)}
+                                onClick={() => setTab('terminal')}
+                            >
+                                Terminal
+                                <span className={styles.tabMeta}>{sessions.length === 1 ? '1 session' : sessions.length + ' sessions'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                role="tab"
+                                id="pg-tab-storage"
+                                aria-selected={tab === 'storage'}
+                                aria-controls="pg-panel-storage"
+                                className={clsx(styles.tab, tab === 'storage' && styles.tabActive)}
+                                onClick={() => setTab('storage')}
+                            >
+                                Mail storage
+                                <span className={styles.tabMeta}>folders and .eml files</span>
+                            </button>
                         </div>
                     )}
+                    {server && tab === 'storage' && (
+                        <div id="pg-panel-storage" role="tabpanel" aria-labelledby="pg-tab-storage">
+                            <StorageManager server={server} folder={folder} onFolder={setFolder} onUpload={upload} notify={setToast} />
+                        </div>
+                    )}
+                    {/* the terminals stay mounted on the storage tab, the sessions keep running */}
+                    <div id="pg-panel-terminal" role="tabpanel" aria-labelledby="pg-tab-terminal" className={styles.terminalPanel} hidden={tab !== 'terminal'}>
+                        <div className={clsx(styles.panes, sessions.length > 1 && styles.split)}>
+                            {sessions.map(session => (
+                                <TerminalPane
+                                    key={session.id}
+                                    session={session}
+                                    focused={session === focused}
+                                    multiple={sessions.length > 1}
+                                    onFocus={() => setFocusedNumber(session.number)}
+                                    onReconnect={() => reconnect(session)}
+                                    onClose={() => closeSession(session)}
+                                />
+                            ))}
+                        </div>
+                        {suggestions.length > 0 && (
+                            <div className={styles.suggestions} aria-label="Suggested commands">
+                                <span className={styles.suggestionsLabel}>{sessions.length > 1 ? 'Try in session ' + focused.number : 'Try'}</span>
+                                <div className={styles.chips}>
+                                    {suggestions.map((suggestion, index) => (
+                                        <button
+                                            type="button"
+                                            key={suggestion.command}
+                                            className={clsx(styles.chip, index === 0 && focused.info.state === 'Not Authenticated' && styles.chipPrimary)}
+                                            title={(suggestion.hint ? suggestion.hint + ': ' : '') + suggestion.command.split('\r\n')[0]}
+                                            onClick={() => {
+                                                focused.run(suggestion.command);
+                                                focused.focusInput?.();
+                                            }}
+                                        >
+                                            {suggestion.label}
+                                        </button>
+                                    ))}
+                                    {focused.idling && sessions.length === 1 && (
+                                        <button type="button" className={clsx(styles.chip, styles.chipAction)} onClick={openSession}>
+                                            Open a second session to make changes
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <aside className={styles.aside}>
-                    <HelpContent />
+                    <HelpContent server={server} onOpen={openFolder} />
                 </aside>
             </div>
 
             {panel === 'setup' && <SetupPanel config={config} onApply={apply} onClose={() => setPanel(null)} />}
             {panel === 'help' && (
                 <Drawer title="Help" onClose={() => setPanel(null)}>
-                    <HelpContent />
+                    <HelpContent server={server} onOpen={openFolder} />
                 </Drawer>
+            )}
+            {fileDrag && (
+                <div className={styles.dropHint} aria-hidden="true">
+                    Drop .eml files to add them to {decodeMailboxName(folder)}
+                    {tab === 'storage' ? ', or on a folder' : ''}
+                </div>
             )}
             {toast && (
                 <div className={styles.toast} role="status">
@@ -801,7 +893,32 @@ function SetupPanel(props: { config: Config; onApply: (config: Config) => void; 
     );
 }
 
-function HelpContent(): ReactNode {
+/** The mailboxes of the running server, kept up to date */
+function MailboxSummary(props: { server: ImapServer; onOpen: (path: string) => void }): ReactNode {
+    const changes = useServerChanges(props.server);
+    const mailboxes = useMemo(() => treeOrder(props.server.control.listMailboxes()), [props.server, changes]);
+    return (
+        <ul className={styles.mailboxes}>
+            {mailboxes.map(mailbox => (
+                <li key={mailbox.path}>
+                    <button type="button" className={styles.mailboxLink} onClick={() => props.onOpen(mailbox.path)} title="Open on the Mail storage tab">
+                        <code>{decodeMailboxName(mailbox.path)}</code>
+                    </button>
+                    <span>
+                        {!mailbox.selectable
+                            ? 'folders only'
+                            : !mailbox.messages
+                              ? 'empty'
+                              : (mailbox.messages === 1 ? '1 message' : mailbox.messages + ' messages') +
+                                (mailbox.unseen ? ', ' + mailbox.unseen + ' unread' : '')}
+                    </span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function HelpContent(props: { server: ImapServer | null; onOpen: (path: string) => void }): ReactNode {
     return (
         <div className={styles.help}>
             <section>
@@ -811,14 +928,8 @@ function HelpContent(): ReactNode {
                 </p>
             </section>
             <section>
-                <h3>Sample mailbox</h3>
-                <ul className={styles.mailboxes}>
-                    {MAILBOXES.map(mailbox => (
-                        <li key={mailbox.name}>
-                            <code>{mailbox.name}</code> <span>{mailbox.note}</span>
-                        </li>
-                    ))}
-                </ul>
+                <h3>Mailboxes</h3>
+                {props.server ? <MailboxSummary server={props.server} onOpen={props.onOpen} /> : <p className={styles.muted}>Starting the server…</p>}
             </section>
             <section>
                 <h3>Keys</h3>
@@ -845,6 +956,7 @@ function HelpContent(): ReactNode {
                         End a line with <code>{'{size}'}</code> and put the message on the next lines (Shift+Enter), the octet count is filled in.
                     </li>
                     <li>Open a second session and run IDLE in one of them to watch changes arrive.</li>
+                    <li>The Mail storage tab shows the mailboxes as folders and .eml files. Upload messages there, or drop .eml files anywhere on the page.</li>
                     <li>ImapKit is strict: input that breaks the RFC gets BAD, on purpose.</li>
                 </ul>
             </section>
