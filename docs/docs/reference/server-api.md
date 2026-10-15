@@ -69,20 +69,35 @@ In CommonJS a module with a default export loads as that export with its named e
 
 Modules under `lib/` other than the root are internals: they follow the source layout and can change between minor versions.
 
+### In a browser
+
+`imapkit/browser` is the whole package as a single ES module for browsers, with the same exports. Browsers have no sockets, so sessions connect with `server.connect()` (below) instead of `listen()`. `listen()`, `start()`, the SMTP listener and the REST API fail there, and so does loading the COMPRESS plugin (it needs `node:zlib`). [Try it live](/live) is built on it.
+
+```javascript
+import imapkit from 'imapkit/browser';
+
+const server = imapkit({ plugins: ['IDLE'] });
+const client = server.connect();
+client.setEncoding('utf8');
+client.on('data', text => console.log(text));
+client.write('A1 LOGIN testuser testpass\r\n');
+```
+
 ## IMAPServer
 
 ### Starting and stopping
 
-| Member                     | What it does                                                                                                                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `start(port?, host?)`      | Starts accepting connections, resolves with the IMAP port. No port picks a free one, no host listens on all addresses. Also starts the SMTP and REST listeners of the `smtp` and `rest` options. |
-| `stop()`                   | Closes the server, every session and the SMTP and REST listeners. Resolves when the server is closed.                                                                                            |
-| `listen(...args)`          | Takes the arguments of `net.Server#listen()`. Starts only the IMAP listener.                                                                                                                     |
-| `close(callback?)`         | Closes the IMAP listener and destroys every connection, calls `callback` when done.                                                                                                              |
-| `address()`                | `net.Server#address()` of the IMAP listener, `server.address().port` after `listen(0)`.                                                                                                          |
-| `startRest()`              | Starts only the REST API of the `rest` option, resolves with its port.                                                                                                                           |
-| `startSmtp()`              | Starts only the SMTP listener of the `smtp` option, resolves with its port.                                                                                                                      |
-| `smtpServer`, `restServer` | The SMTP server and the HTTP server that `start()` started, or `null`. `server.restServer.address().port` gives the REST port when `rest.port` was `0`.                                          |
+| Member                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start(port?, host?)`      | Starts accepting connections, resolves with the IMAP port. No port picks a free one, no host listens on all addresses. Also starts the SMTP and REST listeners of the `smtp` and `rest` options.                                                                                                                                                                                                                                                                                                        |
+| `stop()`                   | Closes the server, every session and the SMTP and REST listeners. Resolves when the server is closed.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `listen(...args)`          | Takes the arguments of `net.Server#listen()`. Starts only the IMAP listener.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `close(callback?)`         | Closes the IMAP listener and destroys every connection, calls `callback` when done.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `address()`                | `net.Server#address()` of the IMAP listener, `server.address().port` after `listen(0)`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `startRest()`              | Starts only the REST API of the `rest` option, resolves with its port.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `startSmtp()`              | Starts only the SMTP listener of the `smtp` option, resolves with its port.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `connect({ secure }?)`     | Opens a session in memory, without a socket or `listen()`, and returns the client end: `write()` commands to it and read the responses from its `data` events (Buffers, or strings after `setEncoding()`). It also has `end()`, `destroy()`, `pause()`, `resume()` and the `end`, `close` and `error` events. The session counts as encrypted, as over TLS; with `secure: false` it starts as plaintext and STARTTLS only marks it as encrypted (`client.encrypted`). Works in Node.js and in browsers. |
+| `smtpServer`, `restServer` | The SMTP server and the HTTP server that `start()` started, or `null`. `server.restServer.address().port` gives the REST port when `rest.port` was `0`.                                                                                                                                                                                                                                                                                                                                                 |
 
 ```javascript
 const server = imapkit({ rest: { port: 0 } });

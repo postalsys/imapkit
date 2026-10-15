@@ -63,6 +63,10 @@ npm install -g smtp-server
 
 Without it, `server.start()` rejects with an error that tells you to install it, and the IMAP server works as usual when SMTP is not enabled.
 
+## In a browser
+
+`import imapkit from 'imapkit/browser'` loads a bundle for browsers, for interactive examples and demos. There are no sockets in a browser, so sessions connect in memory with `server.connect()`, see [Server API](../reference/server-api.md#in-a-browser). [Try it live](/live) runs it on this site.
+
 ## Default account
 
 Every server has one account until you configure others:

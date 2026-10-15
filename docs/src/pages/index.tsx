@@ -40,8 +40,8 @@ function HomepageHeader() {
                         <Link className="button button--secondary button--lg" to="/docs/getting-started/quick-start">
                             Quick Start
                         </Link>
-                        <Link className={clsx('button button--outline button--lg', styles.outlineButton)} to="/docs/">
-                            Documentation
+                        <Link className={clsx('button button--outline button--lg', styles.outlineButton)} to="/live">
+                            Try it live
                         </Link>
                     </div>
                     <code className={styles.install}>npm install --save-dev imapkit</code>

@@ -4,7 +4,9 @@
     "private": true,
     "scripts": {
         "docusaurus": "docusaurus",
+        "prestart": "node scripts/copy-live-bundle.mjs",
         "start": "docusaurus start",
+        "prebuild": "node scripts/copy-live-bundle.mjs",
         "build": "docusaurus build",
         "swizzle": "docusaurus swizzle",
         "clear": "docusaurus clear",

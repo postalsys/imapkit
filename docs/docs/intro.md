@@ -11,6 +11,8 @@ ImapKit is a scriptable, in-memory IMAP server for testing IMAP clients. It impl
 
 Nothing is ever written to disk. The mailbox tree comes from a JSON object, so every new server starts from the same known state, and a test suite can start a fresh server for every test in a few milliseconds.
 
+To see it before installing anything, [try it live](/live): ImapKit runs in your browser tab, and you type IMAP commands and read what it answers.
+
 ## Who it is for
 
 - **Authors of IMAP client libraries** who want every code path (MOVE or COPY with EXPUNGE, LITERAL+ or synchronizing literals, QRESYNC or plain flags) covered against one predictable server.

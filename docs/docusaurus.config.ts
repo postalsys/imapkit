@@ -68,6 +68,11 @@ const config: Config = {
                     label: 'Documentation'
                 },
                 {
+                    to: '/live',
+                    label: 'Try it live',
+                    position: 'left'
+                },
+                {
                     href: 'https://github.com/postalsys/imapkit',
                     label: 'GitHub',
                     position: 'right'
@@ -92,6 +97,10 @@ const config: Config = {
                         {
                             label: 'Quick Start',
                             to: '/docs/getting-started/quick-start'
+                        },
+                        {
+                            label: 'Try it live',
+                            to: '/live'
                         }
                     ]
                 },

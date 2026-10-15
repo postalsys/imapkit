@@ -1,17 +1,26 @@
 name: Documentation
 
 # The Docusaurus site in docs/ is published to GitHub Pages at https://imapkit.com/. Pull requests that change it
-# only build it (broken links fail the build), pushes to master build and deploy.
+# only build it (broken links fail the build), pushes to master build and deploy. The "Try it live" page runs the
+# browser bundle of this checkout (dist/browser, built by npm ci in the root), so changes to the package deploy too.
 on:
     push:
         branches:
             - master
         paths:
             - 'docs/**'
+            - 'src/**'
+            - 'scripts/**'
+            - 'package.json'
+            - 'package-lock.json'
             - '.github/workflows/docs.yml'
     pull_request:
         paths:
             - 'docs/**'
+            - 'src/**'
+            - 'scripts/**'
+            - 'package.json'
+            - 'package-lock.json'
             - '.github/workflows/docs.yml'
     workflow_dispatch:
 
@@ -38,7 +47,13 @@ jobs:
               with:
                   node-version: 24
                   cache: npm
-                  cache-dependency-path: docs/package-lock.json
+                  cache-dependency-path: |
+                      package-lock.json
+                      docs/package-lock.json
+            - name: Build the ImapKit browser bundle
+              # npm ci runs the prepare script, which builds dist/ including dist/browser
+              run: npm ci
+              working-directory: .
             - run: npm ci
             - name: Type check
               run: npm run typecheck
