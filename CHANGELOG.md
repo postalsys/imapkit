@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.0](https://github.com/postalsys/imapkit/compare/v5.0.1...v5.1.0) (2026-10-15)
+
+
+### Features
+
+* run ImapKit in browsers with server.connect() and the imapkit/browser bundle ([a21923e](https://github.com/postalsys/imapkit/commit/a21923efbcfd7b85cbb6cd7471828d370295a261))
+
 ## [5.0.1](https://github.com/postalsys/imapkit/compare/v5.0.0...v5.0.1) (2026-10-08)
 
 
