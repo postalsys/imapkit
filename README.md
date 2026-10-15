@@ -59,6 +59,24 @@ ImapKit needs Node.js 20 or newer. It also runs on the latest [Bun](https://bun.
 
 See [complete.js](https://github.com/postalsys/imapkit/blob/master/examples/complete.js) for an example, [control-api.js](https://github.com/postalsys/imapkit/blob/master/examples/control-api.js) for a client test that changes the server state with the control API, and [rest-api.py](https://github.com/postalsys/imapkit/blob/master/examples/rest-api.py) for the REST API from Python.
 
+### Run in a browser
+
+`imapkit/browser` is a single ES module bundle for browsers, for interactive examples and in-page demos. There are no sockets in a browser, so `server.connect()` opens a connection in memory and returns the client end: write commands to it and read the responses from its `data` events (Uint8Array chunks, or strings after `setEncoding()`). `server.connect()` works in Node.js too and needs no `listen()`.
+
+```javascript
+import imapkit from 'imapkit/browser';
+
+const server = imapkit({ plugins: ['IDLE'] });
+const client = server.connect(); // counts as a TLS connection, { secure: false } for plaintext
+client.setEncoding('utf8');
+client.on('data', text => console.log(text));
+client.write('A1 LOGIN testuser testpass\r\n');
+```
+
+The client end has `write(data, [callback])`, `end()`, `destroy()`, `pause()`, `resume()` and the `data`, `end`, `close` and `error` events. Each write reaches the server as one chunk on a later event loop turn. By default the connection counts as encrypted, as if it ran over TLS. With `{ secure: false }` it starts as plaintext, and STARTTLS only marks it as encrypted (`client.encrypted` turns true), nothing is encrypted. A `close: 'reset'` script rule gives the client an `ECONNRESET` error. The bundle has every plugin but COMPRESS, which throws when it is loaded; `listen()`, the SMTP listener and the REST API need Node.js and throw too.
+
+[Try it live](https://imapkit.com/live) on imapkit.com runs this bundle in a web terminal, [examples/browser.html](https://github.com/postalsys/imapkit/blob/master/examples/browser.html) is a minimal page: run `npm run build`, serve the repository root over HTTP (`npx http-server -c-1 .`) and open `/examples/browser.html`.
+
 ## Scope
 
 ImapKit is a single user, multiple connection IMAP server. Changes made over IMAP live only in the memory of that server instance, so start a new server for every test.

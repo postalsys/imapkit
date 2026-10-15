@@ -34,8 +34,8 @@ export default function idlePlugin(server: IMAPServer) {
                 },
                 30 * 60 * 1000
             );
-            // An idling client should not keep the process alive
-            idleTimer.unref();
+            // An idling client should not keep the process alive (browsers have no unref)
+            idleTimer.unref?.();
 
             const clearIdleTimer = () => clearTimeout(idleTimer);
             const socket = connection.socket;

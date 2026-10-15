@@ -12,6 +12,11 @@
 //    sources had (`require('imapkit')` is the server factory). Named exports of such a module
 //    become properties of the default export (`require('imapkit').TAG_REGEX`), as they were.
 // 4. Collects the `@help` lines of the plugins into dist/plugin-help.json for `imapkit --help`.
+// 5. Bundles dist/esm into dist/browser/imapkit.js (`imapkit/browser`), one ES module for browsers.
+//    The Node builtins are replaced with the shims in scripts/browser/: Buffer and EventEmitter
+//    come from the buffer and events packages, sockets, TLS, the REST API and SMTP throw, and the
+//    COMPRESS plugin throws when it is loaded.
+//    Browsers connect with server.connect(), see the README "Run in a browser".
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -98,7 +103,72 @@ function writePluginHelp() {
     fs.writeFileSync(path.join(root, 'dist', 'plugin-help.json'), JSON.stringify(help, null, 4) + '\n');
 }
 
-function build() {
+// node: builtins and packages that the browser bundle replaces, to files in scripts/browser/
+const BROWSER_SHIMS = {
+    'node:buffer': 'buffer.js',
+    'node:events': 'events.js',
+    'node:stream': 'stream.js',
+    'node:net': 'net.js',
+    'node:tls': 'net.js',
+    'node:util': 'util.js',
+    'node:http': 'unsupported.js',
+    'node:crypto': 'unsupported.js',
+    'smtp-server': 'smtp-server.js'
+};
+
+// modules of dist/esm that the browser bundle replaces: COMPRESS=DEFLATE needs node:zlib, whose sync flush browsers lack
+const BROWSER_MODULES = {
+    'plugins/compress.js': 'compress.js'
+};
+
+async function buildBrowser() {
+    const esbuild = await import('esbuild');
+    const shimDir = path.join(root, 'scripts', 'browser');
+    const esmDir = path.join(root, 'dist', 'esm');
+    const replaced = new Set();
+    await esbuild.build({
+        entryPoints: [path.join(esmDir, 'index.js')],
+        outfile: path.join(root, 'dist', 'browser', 'imapkit.js'),
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        target: 'es2022',
+        minify: true,
+        legalComments: 'eof',
+        inject: [path.join(shimDir, 'globals.js')],
+        logLevel: 'warning',
+        plugins: [
+            {
+                name: 'node-shims',
+                setup(build) {
+                    build.onResolve({ filter: /^(node:|smtp-server$)/ }, args => {
+                        const shim = BROWSER_SHIMS[args.path];
+                        if (!shim) {
+                            return { errors: [{ text: 'No browser shim for ' + args.path + ', add one to BROWSER_SHIMS in scripts/build.js' }] };
+                        }
+                        return { path: path.join(shimDir, shim) };
+                    });
+                    build.onResolve({ filter: /^\./ }, args => {
+                        const module = path.relative(esmDir, path.resolve(args.resolveDir, args.path)).split(path.sep).join('/');
+                        if (Object.hasOwn(BROWSER_MODULES, module)) {
+                            replaced.add(module);
+                            return { path: path.join(shimDir, BROWSER_MODULES[module]) };
+                        }
+                        return undefined;
+                    });
+                }
+            }
+        ]
+    });
+    // a module that moved would ship as it is, and fail only when it runs
+    for (const module of Object.keys(BROWSER_MODULES)) {
+        if (!replaced.has(module)) {
+            throw new Error('The browser bundle did not replace dist/esm/' + module + ', update BROWSER_MODULES in scripts/build.js');
+        }
+    }
+}
+
+async function build() {
     generateCert();
     fs.rmSync(path.join(root, 'dist'), { recursive: true, force: true });
 
@@ -110,10 +180,11 @@ function build() {
 
     applyCjsInterop(path.join(root, 'dist', 'cjs'));
     writePluginHelp();
+    await buildBrowser();
 }
 
 if (process.argv.includes('--generate-only')) {
     generateCert();
 } else {
-    build();
+    await build();
 }

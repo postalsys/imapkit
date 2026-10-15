@@ -29,6 +29,15 @@ export default tseslint.config(
         }
     },
     {
+        // the shims of the browser bundle
+        files: ['scripts/browser/**/*.js'],
+        languageOptions: {
+            globals: {
+                ...globals.browser
+            }
+        }
+    },
+    {
         files: ['**/*.cjs'],
         languageOptions: {
             sourceType: 'commonjs'

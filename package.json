@@ -18,6 +18,10 @@
             "import": "./dist/esm/index.js",
             "require": "./dist/cjs/index.js"
         },
+        "./browser": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/browser/imapkit.js"
+        },
         "./lib/server": {
             "import": "./dist/esm/index.js",
             "require": "./dist/cjs/index.js"
@@ -89,8 +93,11 @@
         "@eslint/js": "10.0.1",
         "@types/node": "20.19.43",
         "@types/smtp-server": "3.5.13",
+        "buffer": "6.0.3",
+        "esbuild": "0.28.2",
         "eslint": "10.12.0",
         "eslint-config-prettier": "10.1.8",
+        "events": "3.3.0",
         "globals": "17.13.0",
         "imapflow": "2.2.9",
         "prettier": "3.9.9",

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>ImapKit in a browser</title>
+        <style>
+            body {
+                margin: 24px;
+                font:
+                    14px/1.5 ui-monospace,
+                    Menlo,
+                    Consolas,
+                    monospace;
+                background: #0f1419;
+                color: #d6dde4;
+            }
+            pre {
+                white-space: pre-wrap;
+                margin: 0 0 8px;
+            }
+            input {
+                width: 100%;
+                font: inherit;
+                color: inherit;
+                background: #161c22;
+                border: 1px solid #232b33;
+                padding: 6px 8px;
+            }
+        </style>
+    </head>
+    <body>
+        <!--
+            ImapKit running in the page, with one session in memory (server.connect()). Build first (npm run build),
+            then serve the repository root over HTTP, ES modules do not load from file:// URLs:
+            npx http-server -c-1 . and open /examples/browser.html.
+            https://imapkit.com/live is the full terminal: tags, literals, several sessions and an extension picker.
+        -->
+        <pre id="output"></pre>
+        <input id="command" placeholder="A1 LOGIN testuser testpass" autofocus spellcheck="false" />
+        <script type="module">
+            import imapkit from '../dist/browser/imapkit.js';
+
+            const output = document.getElementById('output');
+            const input = document.getElementById('command');
+
+            const server = imapkit({ plugins: ['IDLE', 'MOVE', 'UIDPLUS'] });
+            const client = server.connect(); // counts as a TLS connection, { secure: false } for plaintext
+
+            client.setEncoding('utf8');
+            client.on('data', text => output.append(text));
+            client.on('close', () => output.append('[connection closed]\n'));
+
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && input.value) {
+                    output.append(input.value + '\n');
+                    client.write(input.value + '\r\n');
+                    input.value = '';
+                }
+            });
+        </script>
+    </body>
+</html>

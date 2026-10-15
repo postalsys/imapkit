@@ -94,4 +94,10 @@ describe('Built package', { skip: !built && 'run npm run build first' }, () => {
         await listen(server);
         await close(server);
     });
+
+    it('exports the browser bundle as imapkit/browser', async () => {
+        const mod = await import(packageName + '/browser');
+        assert.equal(typeof mod.default, 'function');
+        assert.equal(typeof mod.default().connect, 'function');
+    });
 });

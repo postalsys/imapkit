@@ -23,6 +23,7 @@ export type {
 } from './types.js';
 export type { ScriptRule, ScriptContext, ScriptEvent, ScriptBytes, ScriptHandle } from './script.js';
 export type { Quirk } from './quirks.js';
+export type { MemorySocket } from './memory-socket.js';
 export type { Control, MailboxInfo, MessageInfo, SessionInfo, NewMessage, UserOptions, SessionFilter, ControlRoute, RouteRequest } from './control.js';
 export type { FlagMode, UidMode, UidValidityOptions } from './store-operations.js';
 

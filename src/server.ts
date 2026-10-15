@@ -23,6 +23,8 @@ import { createRestServer } from './rest.js';
 import type { RestServer } from './rest.js';
 import type { SessionInfo } from './control.js';
 import * as bundledCert from './cert.js';
+import { createSocketPair } from './memory-socket.js';
+import type { MemorySocket } from './memory-socket.js';
 import { ServerScript, sendOutput, handleLine, handleQuiet, literalResponse, releaseDeferred } from './script.js';
 import type { DeferredOutput, OutputOperation, ScriptContext, ScriptEvent, ScriptRule } from './script.js';
 import type {
@@ -540,6 +542,22 @@ class IMAPServer extends Stream {
         this.connectionHandlers.forEach(handler => {
             handler(connection);
         });
+    }
+
+    /**
+     * Opens a connection to the server in memory, without a network socket (no `listen()` needed). This is how the
+     * server runs in a browser, see the README "Run in a browser"
+     *
+     * @param {Object} [options] `{ secure }`: false makes the connection a plaintext one, where STARTTLS turns on the
+     *   encryption (nothing is encrypted, the session only counts as encrypted). By default the connection counts as
+     *   one over TLS
+     * @return {MemorySocket} the client end, write commands to it and read the responses from its `data` events
+     */
+    connect(options?: { secure?: boolean | undefined }): MemorySocket {
+        const [serverSocket, clientSocket] = createSocketPair();
+        serverSocket.encrypted = clientSocket.encrypted = !options || options.secure !== false;
+        this.createClient(serverSocket as unknown as net.Socket);
+        return clientSocket;
     }
 
     registerCapability(keyword: string, handler?: CapabilityCheck | null): void {
@@ -1841,7 +1859,8 @@ class IMAPConnection {
         this._outputTimer = null;
         this._deferredOutput = null;
 
-        this.secureConnection = !!this.options.secureConnection;
+        // a TLS socket is encrypted, and so can be an in-memory connection of server.connect()
+        this.secureConnection = !!this.options.secureConnection || (socket as net.Socket & { encrypted?: boolean }).encrypted === true;
 
         this._remainder = '';
         this._command = '';
@@ -1866,7 +1885,7 @@ class IMAPConnection {
         this._commandQueue = [];
         this._processing = false;
 
-        if (this.options.debug) {
+        if (this.options.debug && typeof this.socket.pipe === 'function') {
             this.socket.pipe(process.stdout);
         }
 
@@ -2119,7 +2138,8 @@ class IMAPConnection {
             },
             Math.max(0, next - (Date.now() - last))
         );
-        this._quietTimer.unref();
+        // browsers have no unref
+        this._quietTimer.unref?.();
     }
 
     /**
@@ -2858,6 +2878,18 @@ class IMAPConnection {
         // guards against plugins that upgrade the connection otherwise
         this.discardInput();
 
+        // STARTTLS runs on a live connection
+        const socket = this.socket as net.Socket & { startTls?: (callback: () => void) => void };
+
+        if (typeof socket.startTls === 'function') {
+            // a socket without a TLS layer that can count as encrypted (MemorySocket of server.connect())
+            return socket.startTls(() => {
+                this.secureConnection = true;
+                this.upgrading = false;
+                callback();
+            });
+        }
+
         const secureContext = tls.createSecureContext(this.server.getCredentials());
         const socketOptions: tls.TLSSocketOptions = {
             secureContext: secureContext,
@@ -2870,8 +2902,6 @@ class IMAPConnection {
             }
         };
 
-        // STARTTLS runs on a live connection
-        const socket = this.socket as net.Socket;
         // the RST of a script rule goes to the TCP socket under the TLS layer, see resetSocket. Node also has it as the
         // _parent of the TLS socket, Bun does not
         this.tcpSocket = socket;
