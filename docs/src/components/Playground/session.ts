@@ -71,7 +71,7 @@ export interface ImapServer {
 
 export type ImapKitFactory = (options: { plugins: string[]; storage?: unknown }) => ImapServer;
 
-// RFC 3501 commands and the extension commands, a line that starts with one gets a tag
+// RFC 3501 commands and the extension commands, for Tab completion
 export const COMMANDS = [
     'APPEND',
     'AUTHENTICATE',
@@ -122,7 +122,6 @@ export const COMMANDS = [
     'UNSELECT',
     'UNSUBSCRIBE'
 ];
-const COMMAND_SET = new Set(COMMANDS);
 
 const MAX_LINES = 5000;
 let nextId = 0;
@@ -264,9 +263,15 @@ export class TerminalSession {
     }
 
     /**
-     * Sends what the user typed. A line that starts with a command name gets the next tag, a line typed while the
-     * server waits for a continuation (DONE of IDLE, a SASL response) goes out as it is. Synchronizing literals,
-     * `{n}` at the end of a line, wait for the + continuation before their data goes out (RFC 3501 section 7.5)
+     * Sends a command the page composed (a suggestion), with the next tag unless the server waits for a continuation
+     */
+    runCommand(command: string): string | null {
+        return this.run(this.awaitingContinuation ? command : this.nextTag + ' ' + command);
+    }
+
+    /**
+     * Sends a line as the user typed it, the tag is part of the line (the prompt prefills the next one). Synchronizing
+     * literals, `{n}` at the end of a line, wait for the + continuation before their data goes out (RFC 3501 section 7.5)
      *
      * @return the line as it was sent, without CRLF, or null when nothing was sent
      */
@@ -290,13 +295,12 @@ export class TerminalSession {
             return text.trimEnd();
         }
 
-        const words = text.trim().split(/\s+/);
-        const firstIsCommand = COMMAND_SET.has(words[0].toUpperCase());
-        if (this.options.autoTag && (firstIsCommand || !COMMAND_SET.has((words[1] || '').toUpperCase()))) {
-            text = this.nextTag + ' ' + text;
-            this.tagCounter++;
-        }
         const [tag, command = '', sub = ''] = text.trim().split(/\s+/);
+        // the next tag follows the highest A<n> used, an edited or own tag does not use one up
+        const used = /^A(\d{1,9})$/.exec(tag);
+        if (used) {
+            this.tagCounter = Math.max(this.tagCounter, Number(used[1]));
+        }
         this.pendingTag = tag;
         this.pendingCommand = (command.toUpperCase() === 'UID' ? 'UID ' + sub : command).toUpperCase();
 

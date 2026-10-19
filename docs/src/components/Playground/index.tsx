@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
+import type { ClipboardEvent, DragEvent, KeyboardEvent, ReactNode } from 'react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useBaseUrl from '@docusaurus/useBaseUrl';
@@ -245,7 +245,7 @@ export default function Playground(): ReactNode {
                 'Connected to an ImapKit server running in this tab (' +
                     (next.secure ? 'encrypted, as over TLS' : 'plaintext') +
                     '). Nothing leaves your browser.',
-                'Type an IMAP command, or pick one below. The tag is added for you. Start with: LOGIN testuser testpass'
+                'Type an IMAP command, or pick one below. Each line starts with the next tag, edit or delete it like any other text. Start with: LOGIN testuser testpass'
             );
             const opened = [first];
             while (opened.length < count) {
@@ -476,7 +476,7 @@ export default function Playground(): ReactNode {
                                             className={clsx(styles.chip, index === 0 && focused.info.state === 'Not Authenticated' && styles.chipPrimary)}
                                             title={(suggestion.hint ? suggestion.hint + ': ' : '') + suggestion.command.split('\r\n')[0]}
                                             onClick={() => {
-                                                focused.run(suggestion.command);
+                                                focused.runCommand(suggestion.command);
                                                 focused.focusInput?.();
                                             }}
                                         >
@@ -530,8 +530,13 @@ function TerminalPane(props: {
     const { session, focused, multiple } = props;
     const outputRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const [value, setValue] = useState(session.draft || '');
+    // the line starts with the next tag, an ordinary part of the text that can be edited or deleted
+    const prefill = prefillFor(session);
+    const [value, setValue] = useState(session.draft || prefill);
+    const lastPrefill = useRef(prefill);
     const historyIndex = useRef(-1);
+    // what was typed before stepping into the history
+    const stash = useRef('');
 
     session.focusInput = () => inputRef.current?.focus();
 
@@ -549,6 +554,14 @@ function TerminalPane(props: {
     }, [focused, session]);
 
     useEffect(() => {
+        // typing on an untouched line goes after the tag, a textarea starts with the caret at the beginning
+        const input = inputRef.current;
+        if (input && value === prefill) {
+            input.setSelectionRange(value.length, value.length);
+        }
+    }, [value, prefill]);
+
+    useEffect(() => {
         const input = inputRef.current;
         if (input) {
             input.style.height = 'auto';
@@ -557,17 +570,33 @@ function TerminalPane(props: {
         session.draft = value;
     }, [value, session]);
 
+    useEffect(() => {
+        // an untouched line follows the prompt: the next tag, nothing while the server waits for a continuation
+        if (prefill !== lastPrefill.current) {
+            setValue(current => (current === lastPrefill.current ? prefill : current));
+            lastPrefill.current = prefill;
+        }
+    }, [prefill]);
+
+    const resetLine = (next = prefillFor(session)) => {
+        lastPrefill.current = next;
+        historyIndex.current = -1;
+        setValue(next);
+    };
+
+    // a line from the history gets the next tag in place of the one it was sent with
+    const recall = (line: string) => (prefill ? line.replace(/^A\d+ /, prefill) : line);
+
     const submit = () => {
         if (session.closed) {
             props.onReconnect();
             return;
         }
-        if (!value.trim()) {
+        if (!value.trim() || (value === prefill && !session.awaitingContinuation)) {
             return;
         }
         session.run(value);
-        historyIndex.current = -1;
-        setValue('');
+        resetLine();
         session.scrollToBottom();
     };
 
@@ -578,31 +607,47 @@ function TerminalPane(props: {
             submit();
         } else if (event.key === 'ArrowUp' && !multiline && session.history.length) {
             event.preventDefault();
+            if (historyIndex.current < 0) {
+                stash.current = value;
+            }
             historyIndex.current = historyIndex.current < 0 ? session.history.length - 1 : Math.max(0, historyIndex.current - 1);
-            setValue(session.history[historyIndex.current]);
+            setValue(recall(session.history[historyIndex.current]));
         } else if (event.key === 'ArrowDown' && !multiline && historyIndex.current >= 0) {
             event.preventDefault();
             historyIndex.current++;
             if (historyIndex.current >= session.history.length) {
                 historyIndex.current = -1;
-                setValue('');
+                setValue(stash.current);
             } else {
-                setValue(session.history[historyIndex.current]);
+                setValue(recall(session.history[historyIndex.current]));
             }
-        } else if (event.key === 'Tab' && !event.shiftKey && value && !/\s/.test(value)) {
-            // completes the command name
-            const matches = COMMANDS.filter(command => command.startsWith(value.toUpperCase()));
+        } else if (event.key === 'Tab' && !event.shiftKey && !session.awaitingContinuation) {
+            // completes the command name after the tag, or the first word of a line without one
+            const [, tag = '', word = ''] = /^(\S+ +)?(\S+)$/.exec(value) || [];
+            const matches = word ? COMMANDS.filter(command => command.startsWith(word.toUpperCase())) : [];
             if (matches.length) {
                 event.preventDefault();
-                setValue(matches.length === 1 ? matches[0] + ' ' : commonPrefix(matches));
+                setValue(tag + (matches.length === 1 ? matches[0] + ' ' : commonPrefix(matches)));
             }
         } else if (event.key === 'l' && event.ctrlKey) {
             event.preventDefault();
             session.clear();
         } else if (event.key === 'c' && event.ctrlKey && !window.getSelection()?.toString()) {
             event.preventDefault();
-            setValue('');
-            historyIndex.current = -1;
+            resetLine();
+        }
+    };
+
+    const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+        // a pasted line with its own tag replaces the untouched prefilled one, no "A1 A1 LOGIN"
+        const text = event.clipboardData.getData('text');
+        const input = event.currentTarget;
+        if (prefill && value === prefill && input.selectionStart === prefill.length && /^\S+ +[A-Za-z]/.test(text)) {
+            const [tag, command = ''] = text.trim().split(/\s+/);
+            if (!COMMANDS.includes(tag.toUpperCase()) && COMMANDS.includes(command.toUpperCase())) {
+                event.preventDefault();
+                setValue(text.replace(/\r?\n$/, ''));
+            }
         }
     };
 
@@ -615,10 +660,17 @@ function TerminalPane(props: {
     };
 
     const info = session.info;
-    let prompt = session.options.autoTag ? session.nextTag : '';
-    if (session.awaitingContinuation) {
-        prompt = '+';
-    }
+    const placeholder = session.closed
+        ? 'Press Enter to reconnect'
+        : session.awaitingContinuation
+          ? session.idling
+              ? 'Type DONE to stop idling'
+              : 'The server waits for continuation data'
+          : info.state === 'Not Authenticated'
+            ? 'LOGIN testuser testpass'
+            : 'Type a command, Tab completes';
+    // the first word of a command line is its tag, whatever it is: a deleted tag shows that the command became the tag
+    const [, tagText = '', rest = value] = !session.closed && !session.awaitingContinuation ? /^(\S+)([\s\S]*)$/.exec(value) || [] : [];
 
     return (
         <section className={clsx(styles.pane, focused && multiple && styles.focusedPane)} aria-label={'Session ' + session.number}>
@@ -649,42 +701,46 @@ function TerminalPane(props: {
             <div className={styles.screen} onClick={focusPrompt}>
                 <div className={styles.output} ref={outputRef} role="log" aria-live="polite" />
                 <div className={styles.promptRow}>
-                    <span className={styles.prompt} aria-hidden="true">
-                        {session.closed ? '⏎' : prompt}
-                        <span className={styles.caretMark}>›</span>
+                    <span className={clsx(styles.prompt, session.awaitingContinuation && styles.promptContinue)} aria-hidden="true">
+                        {session.closed ? '⏎' : session.awaitingContinuation ? '+' : '›'}
                     </span>
-                    <textarea
-                        ref={inputRef}
-                        className={styles.input}
-                        rows={1}
-                        value={value}
-                        placeholder={
-                            session.closed
-                                ? 'Press Enter to reconnect'
-                                : session.awaitingContinuation
-                                  ? session.idling
-                                      ? 'Type DONE to stop idling'
-                                      : 'The server waits for continuation data'
-                                  : info.state === 'Not Authenticated'
-                                    ? 'LOGIN testuser testpass'
-                                    : 'Type a command, Tab completes'
-                        }
-                        aria-label={'Command for session ' + session.number}
-                        spellCheck={false}
-                        autoCapitalize="off"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        onChange={event => {
-                            setValue(event.target.value);
-                            historyIndex.current = -1;
-                        }}
-                        onKeyDown={onKeyDown}
-                        onFocus={props.onFocus}
-                    />
+                    <div className={styles.inputWrap}>
+                        {/* the text of the line, drawn under the transparent textarea to color the tag */}
+                        <div className={styles.inputMirror} aria-hidden="true">
+                            {tagText && <span className={styles.inputTag}>{tagText}</span>}
+                            {rest}
+                            {value && value === prefill && <span className={styles.inputHint}>{placeholder}</span>}
+                            {'\n'}
+                        </div>
+                        <textarea
+                            ref={inputRef}
+                            className={styles.input}
+                            rows={1}
+                            value={value}
+                            placeholder={placeholder}
+                            aria-label={'Command for session ' + session.number}
+                            spellCheck={false}
+                            autoCapitalize="off"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            onChange={event => {
+                                setValue(event.target.value);
+                                historyIndex.current = -1;
+                            }}
+                            onKeyDown={onKeyDown}
+                            onPaste={onPaste}
+                            onFocus={props.onFocus}
+                        />
+                    </div>
                 </div>
             </div>
         </section>
     );
+}
+
+/** what an untouched command line holds: the next tag, nothing without auto tags or while the server waits */
+function prefillFor(session: TerminalSession): string {
+    return session.options.autoTag && !session.closed && !session.awaitingContinuation ? session.nextTag + ' ' : '';
 }
 
 function commonPrefix(words: string[]): string {
@@ -819,8 +875,8 @@ function SetupPanel(props: { config: Config; onApply: (config: Config) => void; 
                 <label className={styles.option}>
                     <input type="checkbox" checked={autoTag} onChange={event => setAutoTag(event.target.checked)} />
                     <span>
-                        <strong>Add tags automatically</strong>
-                        <span>Turn off to type every tag yourself</span>
+                        <strong>Prefill tags</strong>
+                        <span>Each line starts with the next tag (A1, A2 ...), which you can edit or delete. Turn off to type every tag yourself</span>
                     </span>
                 </label>
             </section>
@@ -945,13 +1001,16 @@ function HelpContent(props: { server: ImapServer | null; onOpen: (path: string) 
                     <dt>Ctrl+L</dt>
                     <dd>Clear the screen</dd>
                     <dt>Ctrl+C</dt>
-                    <dd>Clear the line</dd>
+                    <dd>Start a fresh line with the next tag</dd>
                 </dl>
             </section>
             <section>
                 <h3>Good to know</h3>
                 <ul className={styles.tips}>
-                    <li>Lines that start with a command get the next tag. Type your own tag to send a line as it is.</li>
+                    <li>
+                        Each line starts with the next tag. It is plain text: edit it, or delete it to see how the server treats an untagged line. Lines go out
+                        as typed.
+                    </li>
                     <li>
                         End a line with <code>{'{size}'}</code> and put the message on the next lines (Shift+Enter), the octet count is filled in.
                     </li>

@@ -303,32 +303,70 @@
 .prompt {
     flex: none;
     padding-right: 1ch;
-    color: var(--pg-client);
+    color: var(--pg-term-dim);
     white-space: nowrap;
 }
 
-.caretMark {
-    margin-left: 0.6ch;
-    color: var(--pg-term-dim);
+.promptContinue {
+    color: var(--pg-client);
+}
+
+/* the textarea is transparent over a copy of its text that colors the tag, both have to wrap the same way */
+.inputWrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.input,
+.inputMirror {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
+    tab-size: 8;
+}
+
+.inputMirror {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: var(--pg-term-ink);
+    pointer-events: none;
+}
+
+.inputTag {
+    color: var(--pg-client);
+}
+
+.inputHint {
+    color: #4e5964;
 }
 
 .input {
-    flex: 1;
-    min-width: 0;
-    padding: 0;
-    border: 0;
+    position: relative;
+    display: block;
+    width: 100%;
     outline: none;
     resize: none;
     overflow: hidden;
     background: transparent;
-    color: var(--pg-term-ink);
+    color: transparent;
     caret-color: var(--pg-ok);
-    font: inherit;
+}
+
+.input::selection {
+    background: rgba(140, 170, 200, 0.35);
 }
 
 /* iOS zooms into inputs with a font smaller than 16px */
 @media (pointer: coarse) {
-    .input {
+    .input,
+    .inputMirror {
         font-size: 16px;
     }
 }
