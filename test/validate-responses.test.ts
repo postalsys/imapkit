@@ -74,6 +74,7 @@ describe('Response grammar guardrail', () => {
         ['* 1 FETCH UID 1\r\n', /parenthesized/],
         ['* 1 FETCH (UID\r\n', /ImapFlow/],
         ['* SEARCH 0\r\n', /nz-numbers/],
+        ['* SEARCH 1 01\r\n', /nz-numbers/],
         ['* ESEARCH (TAG A1) COUNT 1\r\n', /correlator/],
         ['* ESEARCH (TAG "A1") UID COUNT\r\n', /pairs/],
         ['* ESEARCH MIN 0\r\n', /MIN has an invalid value/],

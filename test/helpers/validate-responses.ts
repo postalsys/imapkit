@@ -40,6 +40,7 @@ interface ParsedResponse {
     tag?: string | undefined;
     command?: string | undefined;
     attributes?: Attribute[] | undefined;
+    numbers?: number[] | undefined;
 }
 
 const CR = 0x0d;
@@ -773,6 +774,16 @@ async function validateResponses(transcript: Buffer | string, options?: Validate
             parsed = await parser(response.payload, { literals: response.literals.slice() });
         } catch (err) {
             fail('ImapFlow can not parse the response (' + (err as Error).message + ')', response.text);
+        }
+        if (parsed.numbers) {
+            // ImapFlow reads a plain SEARCH response into numbers and loses how each one was written ("01" becomes 1),
+            // the checks need the atoms as the server sent them. It does this only for single spaces and digits
+            parsed.attributes = response.payload
+                .toString('binary')
+                .split(' ')
+                .slice(2)
+                .map(value => ({ type: 'ATOM', value }));
+            delete parsed.numbers;
         }
         checkResponse(response, parsed, utf8, uidonly);
         utf8 = utf8 || enables(parsed, 'UTF8=ACCEPT') || enables(parsed, 'IMAP4REV2');
