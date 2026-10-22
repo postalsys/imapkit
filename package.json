@@ -1,6 +1,6 @@
 {
     "name": "imapkit",
-    "version": "5.1.0",
+    "version": "5.2.0",
     "description": "Scriptable, strictly RFC compliant in-memory IMAP server for testing IMAP clients",
     "type": "module",
     "main": "./dist/cjs/index.js",
