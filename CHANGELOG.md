@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.0](https://github.com/postalsys/imapkit/compare/v5.1.0...v5.2.0) (2026-10-22)
+
+
+### Features
+
+* add append and trace events and the tls option for an implicit TLS listener ([18c1c26](https://github.com/postalsys/imapkit/commit/18c1c2605fe1836874222a6eee84e3ac6d254e56))
+
 ## [5.1.0](https://github.com/postalsys/imapkit/compare/v5.0.1...v5.1.0) (2026-10-15)
 
 
