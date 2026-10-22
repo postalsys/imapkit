@@ -6,7 +6,7 @@ description: Download ImapKit Desktop, a mock IMAP and SMTP server for Windows w
 
 # ImapKit Desktop for Windows
 
-ImapKit Desktop is a mock mail server for testing email clients and apps that send or read mail. It runs ImapKit for IMAP and an SMTP server that delivers into the same mailboxes, and shows everything that happens in a native Windows app: which clients are connected, every line of the protocol they speak, and the mail in the mailboxes.
+ImapKit Desktop is a mock mail server for testing email clients and apps that send or read mail. It runs ImapKit for IMAP and an SMTP server that delivers into the same mailboxes, and shows everything that happens in a native Windows app: which clients are connected, every line of the protocol they speak, and the mail in the mailboxes. A built-in plaintext client lets you type IMAP and SMTP commands yourself.
 
 <div className="margin-vert--lg"><a className="button button--primary button--lg" href="https://github.com/postalsys/imapkit-desktop/releases/latest/download/ImapKitDesktop-Setup.exe">Download for Windows</a></div>
 
@@ -100,6 +100,19 @@ What happens to mail that arrives over SMTP depends on whether the client logged
 - **With a login** (any user name and password work) the client is sending mail, like through the submission server of a mail provider. The message goes to the **Outbox** with its SMTP envelope, Bcc recipients included, and is not delivered anywhere.
 
 So an app under test can send real mail through ImapKit Desktop and you can check what it sent, without any message leaving your computer. Deliver to, in the right-click menu of an Outbox message, moves it into a mailbox as if the mail had arrived there, and Empty Outbox, in the right-click menu of the Outbox, deletes everything in it.
+
+## The Client page
+
+![The Client page with an IMAP session upgraded with STARTTLS](/img/desktop/client.png)
+
+The Client page is a plaintext client like `telnet` or `openssl s_client`, for typing IMAP or SMTP commands by hand. It connects to any host and port, not just to this app; the presets fill in the servers of this app.
+
+- **Use TLS** starts the connection with TLS. Every certificate is accepted, self-signed and expired ones too, and the console shows the certificate chain, the verification result, the protocol and the cipher.
+- In a plaintext session, sending `STARTTLS` (IMAP `a STARTTLS`, SMTP `STARTTLS`) upgrades the connection to TLS once the server agrees, and shows the same details.
+- Type a command and press Enter to send it with CRLF. Up and Down recall earlier lines. Your lines are blue, what the server sends is black, and connection news is gray.
+- **Save** writes the session to a text file, **Clear** empties the console.
+
+A session with this app's own servers also shows up on the Connections page, with its protocol log.
 
 ## Where the data is
 
