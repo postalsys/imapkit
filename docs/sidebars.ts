@@ -11,6 +11,12 @@ const sidebars: SidebarsConfig = {
         },
         {
             type: 'category',
+            label: 'Apps',
+            collapsed: false,
+            items: ['apps/overview', 'apps/desktop-windows']
+        },
+        {
+            type: 'category',
             label: 'Guides',
             collapsed: false,
             items: [

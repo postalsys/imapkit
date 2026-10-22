@@ -13,6 +13,8 @@ Nothing is ever written to disk. The mailbox tree comes from a JSON object, so e
 
 To see it before installing anything, [try it live](/live): ImapKit runs in your browser tab, and you type IMAP commands and read what it answers.
 
+To test an email client or an app by hand, [ImapKit Desktop](apps/desktop-windows.md) runs ImapKit with an SMTP server in a Windows app that shows the protocol log of every session and the mail in the mailboxes.
+
 ## Who it is for
 
 - **Authors of IMAP client libraries** who want every code path (MOVE or COPY with EXPUNGE, LITERAL+ or synchronizing literals, QRESYNC or plain flags) covered against one predictable server.
