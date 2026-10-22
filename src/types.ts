@@ -253,6 +253,9 @@ export interface IMAPServerOptions {
     plugins?: (string | Plugin)[] | string | Plugin | undefined;
     users?: Record<string, UserData> | undefined;
     secureConnection?: boolean | undefined;
+    /** starts a second IMAP listener for implicit TLS (IMAPS) with `server.start()`, its sessions share the storage
+     * with the main listener. Without a host it listens on the host given to `start()` */
+    tls?: { port?: number | undefined; host?: string | undefined } | undefined;
     /** starts an SMTP server with `server.start()` that appends every received message to INBOX, needs the optional
      * smtp-server package */
     smtp?: { port?: number | undefined; host?: string | undefined } | undefined;

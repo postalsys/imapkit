@@ -243,6 +243,8 @@ class IMAPServer extends Stream {
     declare sessionCounter: number;
     /** the control API, see src/control.ts */
     declare control: Control;
+    /** the implicit TLS listener that `start()` runs for the `tls` option */
+    declare tlsServer: tls.Server | null;
     /** the SMTP server that `start()` runs for the `smtp` option */
     declare smtpServer: SMTPListener | null;
     /** the HTTP server of the REST API that `start()` runs for the `rest` option */
@@ -351,6 +353,7 @@ class IMAPServer extends Stream {
         }
         this.systemFlags = ([] as string[]).concat(this.options.systemFlags || ['\\Answered', '\\Flagged', '\\Draft', '\\Deleted', '\\Seen']);
         this.loadStorage();
+        this.tlsServer = null;
         this.smtpServer = null;
         this.restServer = null;
     }
@@ -409,8 +412,25 @@ class IMAPServer extends Stream {
      */
     async start(port?: number, host?: string): Promise<number> {
         const imapPort = await listenOn(this.server, port, host);
-        await Promise.all([this.options.smtp ? this.startSmtp() : null, this.options.rest ? this.startRest() : null]);
+        await Promise.all([
+            this.options.tls ? this.startTlsListener(host) : null,
+            this.options.smtp ? this.startSmtp() : null,
+            this.options.rest ? this.startRest() : null
+        ]);
         return imapPort;
+    }
+
+    /**
+     * Starts the implicit TLS listener of the `tls` option. Its sessions are sessions of this server like the ones of
+     * the main listener, they share the storage and count as encrypted
+     *
+     * @param {String} [defaultHost] Address to listen on when the `tls` option has no host
+     * @return {Promise<Number>} resolves with the port of the TLS listener
+     */
+    startTlsListener(defaultHost?: string): Promise<number> {
+        const { port, host } = this.options.tls || {};
+        this.tlsServer = tls.createServer(this.getCredentials(), this.createClient.bind(this));
+        return listenOn(this.tlsServer, port, host || defaultHost);
     }
 
     /**
@@ -483,13 +503,34 @@ class IMAPServer extends Stream {
 
     close(callback?: (err?: Error) => void): void {
         this.closeListeners(true);
-        this.server.close(callback);
+        this.closeImapListeners(callback);
         // close() only completes once all connections are gone
         this.connections.forEach((connection: IMAPConnection) => {
             if (connection.socket) {
                 connection.socket.destroy();
             }
         });
+    }
+
+    /**
+     * Stops accepting IMAP connections, on the main listener and on the TLS listener of the `tls` option
+     *
+     * @param {Function} [callback] Called once both listeners are closed, which is after their last connection is
+     *   gone, with the first error
+     */
+    closeImapListeners(callback?: (err?: Error) => void): void {
+        const listeners: (net.Server | tls.Server)[] = this.tlsServer ? [this.server, this.tlsServer] : [this.server];
+        this.tlsServer = null;
+        let pending = listeners.length;
+        let error: Error | undefined;
+        listeners.forEach(listener =>
+            listener.close(err => {
+                error = error || err;
+                if (--pending === 0) {
+                    callback?.(error);
+                }
+            })
+        );
     }
 
     /**
@@ -1408,6 +1449,9 @@ class IMAPServer extends Stream {
             }
         }
 
+        // like expunge, before the sessions are told: APPEND, COPY, MOVE, REPLACE, SMTP and the control API all add here
+        this.emit('append', mailbox, [message], this.activeConnection);
+
         this.notify(
             {
                 tag: '*',
@@ -2015,6 +2059,7 @@ class IMAPConnection {
      * @param {Function} [callback] Called once the data was handed to the system (a transport: on the next turn)
      */
     writeLayer(data: Buffer, transport: Transport | null, callback?: () => void): void {
+        this.trace('out', data);
         if (transport) {
             transport.write(data);
             if (callback) {
@@ -2022,6 +2067,18 @@ class IMAPConnection {
             }
         } else {
             this.writeRaw(data, callback);
+        }
+    }
+
+    /**
+     * Emits the protocol traffic of the session as `trace` events, as the IMAP layer sees it: above TLS and COMPRESS
+     *
+     * @param {String} direction "in" for client input, "out" for server output
+     * @param {Buffer} data The octets
+     */
+    trace(direction: 'in' | 'out', data: Buffer): void {
+        if (this.server.listenerCount('trace')) {
+            this.server.emit('trace', { session: this.sessionNumber, direction, data });
         }
     }
 
@@ -2352,6 +2409,10 @@ class IMAPConnection {
 
         if (this._resetting) {
             return;
+        }
+
+        if (chunk && chunk.length) {
+            this.trace('in', chunk);
         }
 
         // everything in one read arrived before anything this read causes to be sent

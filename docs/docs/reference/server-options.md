@@ -38,10 +38,11 @@ The `imapkit` command passes its `--config` JSON file to the same factory, so ev
 
 ## Listeners started by `start()`
 
-`server.start()` starts the IMAP listener and, when these options are set, the SMTP and REST listeners next to it.
+`server.start()` starts the IMAP listener and, when these options are set, the implicit TLS, SMTP and REST listeners next to it.
 
 | Option | Type                                               | Default                                    | What it does                                                                                                                                                                                                                                                                                                           |
 | ------ | -------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tls`  | `{ port?: number, host?: string }`                 | not started                                | Also listens for implicit TLS (IMAPS) connections, next to the plaintext listener, with the `credentials`. Its sessions share the storage with the main listener and count as encrypted. Port `0` or no port picks a free one, no host listens on the host given to `start()`. The listener is `server.tlsServer`.     |
 | `smtp` | `{ port?: number, host?: string }`                 | not started                                | Starts an SMTP server that appends every received message to INBOX. Needs the optional `smtp-server` package (`npm install smtp-server`), `start()` rejects with an error that names it when it is missing. Port `0` or no port picks a free one, no host listens on all addresses. The server is `server.smtpServer`. |
 | `rest` | `{ port?: number, host?: string, token?: string }` | not started, host `127.0.0.1` when started | Starts the REST API (the control API over HTTP). A host that is not a loopback address needs a `token`, which requests send as `Authorization: Bearer <token>`. The server is `server.restServer`. See [REST API](../rest-api/overview.md).                                                                            |
 

@@ -245,6 +245,34 @@ describe('REST API', () => {
         assert.strictEqual((await call('GET', '/v1/events?types=nope')).status, 400);
     });
 
+    it('streams append events, and trace events only when asked for', async () => {
+        const abort = new AbortController();
+        const res = await fetch(base + '/v1/events?types=append,trace', { signal: abort.signal });
+        const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+        let text = '';
+        while (!text.includes(': connected')) {
+            text += Buffer.from((await reader.read()).value as Uint8Array).toString();
+        }
+        server.control.addMessage('INBOX', { raw: message(3) });
+        const session = await new Promise<Session>(resolve => openSession((server.address() as AddressInfo).port, resolve));
+        await new Promise(resolve => session.run('A1 LOGIN testuser testpass', resolve));
+        const parse = () => [...text.matchAll(/^event: (\w+)\ndata: (.*)\n\n/gm)].map(match => [match[1], JSON.parse(match[2])]);
+        while (!parse().some(([type, data]) => type === 'trace' && Buffer.from(data.data, 'base64').toString().startsWith('A1 OK'))) {
+            text += Buffer.from((await reader.read()).value as Uint8Array).toString();
+        }
+        session.close();
+        abort.abort();
+        const received = parse();
+        assert.deepStrictEqual(received[0], ['append', { path: 'INBOX', uids: [3], origin: null }]);
+        const traced = received.slice(1).map(([type, data]) => [type, data.direction, data.encoding, Buffer.from(data.data, 'base64').toString().slice(0, 5)]);
+        assert.deepStrictEqual(traced, [
+            ['trace', 'out', 'base64', '* OK '],
+            ['trace', 'in', 'base64', 'A1 LO'],
+            ['trace', 'out', 'base64', 'A1 OK']
+        ]);
+        assert.match((await call('GET', '/v1/events?types=nope')).body.error.message, /expected session, command, mailbox, append, .*, reset, trace$/);
+    });
+
     it('ends open event streams on a graceful shutdown', async () => {
         const res = await fetch(base + '/v1/events?types=session');
         const reader = (res.body as ReadableStream<Uint8Array>).getReader();

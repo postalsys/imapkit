@@ -27,7 +27,7 @@ imapkit -p 1143
 
 Point your IMAP client to `localhost:1143` and log in with user name `testuser` and password `testpass`. Without `-p` the server listens on port 143 (993 with `--secure`), which usually needs root privileges.
 
-`imapkit --smtpPort=1025` also starts an SMTP server that appends every message it receives to INBOX. SMTP needs the optional [smtp-server](https://www.npmjs.com/package/smtp-server) package, which is not installed with ImapKit: `npm install -g smtp-server` (or `npm install smtp-server` next to a local install).
+`imapkit -p 1143 --tls-port=1993` also listens for implicit TLS (IMAPS) connections on port 1993, both ports serve the same mailboxes. `imapkit --smtpPort=1025` also starts an SMTP server that appends every message it receives to INBOX. SMTP needs the optional [smtp-server](https://www.npmjs.com/package/smtp-server) package, which is not installed with ImapKit: `npm install -g smtp-server` (or `npm install smtp-server` next to a local install).
 
 Run `imapkit --help` to see all command line options, the environment variables (`IMAPKIT_PORT`, `IMAPKIT_PLUGINS`, ...) and sample configuration data. For example, `imapkit -p 1143 --plugin=IDLE,MOVE,CONDSTORE --storage=storage.json` loads three plugins and the mailboxes of `storage.json`.
 
@@ -444,7 +444,7 @@ Plugins add operations for their own data, they exist only when the plugin is lo
 
 A plugin of your own adds operations with `server.control.register(name, fn, routes)`, the routes go to the REST API.
 
-`server.start(port, host)` resolves with the port, `server.stop()` closes the server and every session. `listen()` and `close()` still work. With the `smtp` option (`imapkit({ smtp: { port, host } })`) `start()` also starts an SMTP server that appends every message it receives to INBOX, `server.smtpServer` is that server. It needs the optional `smtp-server` package (`npm install smtp-server`), `start()` rejects with an error that says so when it is missing.
+`server.start(port, host)` resolves with the port, `server.stop()` closes the server and every session. `listen()` and `close()` still work. With the `smtp` option (`imapkit({ smtp: { port, host } })`) `start()` also starts an SMTP server that appends every message it receives to INBOX, `server.smtpServer` is that server. It needs the optional `smtp-server` package (`npm install smtp-server`), `start()` rejects with an error that says so when it is missing. With the `tls` option (`imapkit({ tls: { port, host } })`) `start()` also listens for implicit TLS connections, next to the plaintext port, so one server answers on 143 and 993 alike; `server.tlsServer` is that listener.
 
 ### Events
 
@@ -453,8 +453,10 @@ Tests can wait for events instead of polling:
 - `session`: `{ type, session }`, `type` is `open`, `login`, `select` (also when the same mailbox is selected again), `unselect` (CLOSE, UNSELECT, a failed SELECT, BYE), `logout` (UNAUTHENTICATE), `waiting` (a command waits for client input, with `command`, e.g. `IDLE` after its continuation) or `close`, `session` is the session as `sessions()` describes it.
 - `command`: `{ session, tag, command, status, user }` when the tagged response of a command goes out, `status` is `OK`, `NO` or `BAD`. A line that is refused before it runs (it does not parse, or it is pipelined ambiguously) and a command that a script rule answers have no `command` event.
 - `mailbox`: `{ type, path, oldPath, mailbox, origin }` for CREATE, DELETE, RENAME, SUBSCRIBE and UNSUBSCRIBE, `origin` is null for the control API.
+- `append`: `(mailbox, messages, origin)` when a message is added, by APPEND, COPY, MOVE, REPLACE, SMTP or the control API, before the sessions are told.
 - `expunge`: `(mailbox, messages, origin)` before the sessions are told, and `flags`: `(mailbox, messages, origin)` for flag changes of the control API.
 - `acl`: `(mailbox, previousAcl)` when the ACL of a mailbox changes (ACL plugin), `script`: `{ rule, event, session, tag, command }` when a script rule fires, `reset`: after `control.reset()`.
+- `trace`: `{ session, direction, data }` for the protocol traffic of a session, `direction` is `in` or `out` and `data` a Buffer. It is the IMAP layer above TLS and COMPRESS, so a log shows plaintext commands and responses. Nothing is traced while no one listens.
 
 ```javascript
 const idling = new Promise(resolve => server.on('session', event => event.type === 'waiting' && event.command === 'IDLE' && resolve(event)));
@@ -478,7 +480,7 @@ The REST API controls the whole server, including the mail of every user, so it 
 
 Requests and responses are JSON, and every POST needs `Content-Type: application/json`, also without a body (HTTP 415 otherwise). Errors are `{ "error": { "code", "message" } }` with HTTP status 404 for `NONEXISTENT`, 409 for `ALREADYEXISTS` and the response codes of a failed mailbox operation (`CANNOT`, `HASCHILDREN` ...), 400 for `INVALID`, 401 for a missing or wrong token, 404 `NOTFOUND` and 405 `METHOD` for an unknown route or method, 413 `TOOBIG` for a body over 64 MiB (and `addMessage` checks refused by APPENDLIMIT), 500 for a server error. A mailbox is its storage name (modified UTF-7) in the URL, URL encoded with a `/` in the name as `%2F` (`/v1/mailboxes/Work%2FProjects`). Message sources are base64 in responses (`"encoding": "base64"`), a request sends `raw` as text or as base64 with `"encoding": "base64"`. `GET /v1/openapi.json` describes every endpoint.
 
-`GET /v1/events` streams the [events](#events) as [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (`event: <type>` with JSON `data`), so a test in another language can wait for "the client selected INBOX" or "a script rule fired" without polling. `?types=session,command` chooses the types (`session`, `command`, `mailbox`, `expunge`, `flags`, `acl`, `script`, `reset`), mailboxes are paths, messages UIDs and sessions numbers in the data:
+`GET /v1/events` streams the [events](#events) as [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (`event: <type>` with JSON `data`), so a test in another language can wait for "the client selected INBOX" or "a script rule fired" without polling. `?types=session,command` chooses the types (`session`, `command`, `mailbox`, `append`, `expunge`, `flags`, `acl`, `script`, `reset`, and `trace`, which is only sent when asked for, with base64 `data`), mailboxes are paths, messages UIDs and sessions numbers in the data:
 
 ```bash
 curl -N 'http://127.0.0.1:8143/v1/events?types=session'

@@ -783,7 +783,7 @@ class Control {
                 this.server.close(done);
             } else {
                 this.server.closeListeners(false);
-                this.server.server.close(done);
+                this.server.closeImapListeners(done);
             }
         });
     }

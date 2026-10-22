@@ -22,6 +22,8 @@ Usage: imapkit [OPTS]
                            "Scripted faults" below)
   --plugin=<plugin>        Enables a plugin for the server. See below for
                            available plugins.
+  --tls-port=<port>        Also listens for implicit TLS (IMAPS) connections
+                           on this port, next to the plaintext port
   --smtpPort=<port>        Port number for incoming SMTP server. If not set
                            SMTP server is not started. --smtp-port works too
   --rest-port=<port>       Starts the REST API (the control API over HTTP,
@@ -38,9 +40,9 @@ Usage: imapkit [OPTS]
 
 The options can also be set with environment variables: IMAPKIT_PORT,
 IMAPKIT_SECURE, IMAPKIT_DEBUG, IMAPKIT_STORAGE, IMAPKIT_CONFIG,
-IMAPKIT_SCRIPT, IMAPKIT_PLUGINS (comma separated), IMAPKIT_SMTPPORT,
-IMAPKIT_REST_PORT, IMAPKIT_REST_HOST, IMAPKIT_REST_TOKEN, IMAPKIT_QUIRKS
-and IMAPKIT_SCRIPT_SEED.
+IMAPKIT_SCRIPT, IMAPKIT_PLUGINS (comma separated), IMAPKIT_TLS_PORT,
+IMAPKIT_SMTPPORT, IMAPKIT_REST_PORT, IMAPKIT_REST_HOST, IMAPKIT_REST_TOKEN,
+IMAPKIT_QUIRKS and IMAPKIT_SCRIPT_SEED.
 
 NB! If port or smtpPort values are below 1024 you most probably need to
 use sudo or run the command with administrator rights.

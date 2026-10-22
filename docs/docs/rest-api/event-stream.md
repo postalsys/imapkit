@@ -26,40 +26,44 @@ The stream starts with the comment `: connected` as soon as the server listens f
 
 ## Choosing event types
 
-`?types=` takes a comma separated list. Without it the stream has every type:
+`?types=` takes a comma separated list. Without it the stream has every type but `trace`, which is only sent when the list names it. The trace holds everything the clients send, including the passwords and tokens of LOGIN and AUTHENTICATE:
 
 | Type      | When                                                                    |
 | --------- | ----------------------------------------------------------------------- |
 | `session` | a session opens, logs in, selects, unselects, logs out, waits or closes |
 | `command` | the tagged response of a command goes out                               |
 | `mailbox` | a mailbox is created, deleted, renamed, subscribed or unsubscribed      |
+| `append`  | messages are added                                                      |
 | `expunge` | messages are removed                                                    |
 | `flags`   | the control API or the REST API changed flags                           |
 | `acl`     | an ACL changed (ACL plugin)                                             |
 | `script`  | a script rule fired                                                     |
 | `reset`   | the server was reset                                                    |
+| `trace`   | a session received or sent protocol data, only when asked for           |
 
 An unknown type is refused before the stream starts:
 
 ```bash
 curl -s 'http://127.0.0.1:8143/v1/events?types=session,foo'
-# 400 {"error":{"code":"INVALID","message":"Unknown event type foo, expected session, command, mailbox, expunge, flags, acl, script, reset"}}
+# 400 {"error":{"code":"INVALID","message":"Unknown event type foo, expected session, command, mailbox, append, expunge, flags, acl, script, reset, trace"}}
 ```
 
 ## Payloads
 
 The data is the JSON form of the [server event](../control-api/events.md): mailboxes are storage names, messages are UIDs and sessions are session numbers (`origin` is `null` for changes of the control and REST APIs). Below is an excerpt from a real run, with an IMAP client that logs in, selects INBOX, runs a NOOP that a script rule answers, creates a mailbox, stores a flag and logs out, followed by REST calls:
 
-| Type      | Data                                                                                  |
-| --------- | ------------------------------------------------------------------------------------- |
-| `session` | `{ type, session, command? }`, see [session events](../control-api/events.md#session) |
-| `command` | `{ session, tag, command, status, user }`                                             |
-| `mailbox` | `{ type, path, oldPath, origin }`                                                     |
-| `expunge` | `{ path, uids, origin }`                                                              |
-| `flags`   | `{ path, messages: [{ uid, flags }], origin }`                                        |
-| `acl`     | `{ path }`                                                                            |
-| `script`  | `{ rule, event, session, tag, command }`                                              |
-| `reset`   | `{}`                                                                                  |
+| Type      | Data                                                                                    |
+| --------- | --------------------------------------------------------------------------------------- |
+| `session` | `{ type, session, command? }`, see [session events](../control-api/events.md#session)   |
+| `command` | `{ session, tag, command, status, user }`                                               |
+| `mailbox` | `{ type, path, oldPath, origin }`                                                       |
+| `append`  | `{ path, uids, origin }`                                                                |
+| `expunge` | `{ path, uids, origin }`                                                                |
+| `flags`   | `{ path, messages: [{ uid, flags }], origin }`                                          |
+| `acl`     | `{ path }`                                                                              |
+| `trace`   | `{ session, direction, data, encoding }`, `data` is base64 and `encoding` is `"base64"` |
+| `script`  | `{ rule, event, session, tag, command }`                                                |
+| `reset`   | `{}`                                                                                    |
 
 ```
 event: acl

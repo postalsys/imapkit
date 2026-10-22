@@ -23,6 +23,7 @@ const { values: argv } = parseArgs({
         plugin: { type: 'string', multiple: true },
         smtpPort: { type: 'string' },
         'smtp-port': { type: 'string' },
+        'tls-port': { type: 'string' },
         'rest-port': { type: 'string' },
         'rest-host': { type: 'string' },
         'rest-token': { type: 'string' },
@@ -48,6 +49,7 @@ const configLocation = argv.config || process.env.IMAPKIT_CONFIG;
 const storageLocation = argv.storage || process.env.IMAPKIT_STORAGE;
 const scriptLocation = argv.script || process.env.IMAPKIT_SCRIPT;
 const smtpPort = argv.smtpPort || argv['smtp-port'] || process.env.IMAPKIT_SMTPPORT;
+const tlsPort = argv['tls-port'] || process.env.IMAPKIT_TLS_PORT;
 const restPort = argv['rest-port'] || process.env.IMAPKIT_REST_PORT;
 const restHost = argv['rest-host'] || process.env.IMAPKIT_REST_HOST;
 const restToken = argv['rest-token'] || process.env.IMAPKIT_REST_TOKEN;
@@ -115,6 +117,9 @@ if (argv.help) {
     if (scriptSeed !== undefined) {
         config.scriptSeed = Number(scriptSeed);
     }
+    if (tlsPort) {
+        config.tls = { port: Number(tlsPort) };
+    }
     if (restPort) {
         config.rest = { port: Number(restPort), host: restHost, token: restToken };
     }
@@ -135,6 +140,9 @@ if (argv.help) {
         listening => {
             // the actual port, also for -p 0
             console.log('ImapKit successfully%s listening on port %s', isSecure ? ' and securely' : '', listening);
+            if (server.tlsServer) {
+                console.log('ImapKit listening for TLS connections on port %s', server.tlsServer.address().port);
+            }
             if (server.restServer) {
                 console.log('REST API listening on %s:%s', (config.rest && config.rest.host) || '127.0.0.1', server.restServer.address().port);
             }

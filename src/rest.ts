@@ -83,8 +83,10 @@ function decodeBody(value: unknown, encoding: unknown): unknown {
     return encoding === 'base64' && typeof value === 'string' ? Buffer.from(value, 'base64') : value;
 }
 
-// the server events that GET /v1/events streams
-const EVENT_TYPES = ['session', 'command', 'mailbox', 'expunge', 'flags', 'acl', 'script', 'reset'];
+// the server events that GET /v1/events streams by default
+const EVENT_TYPES = ['session', 'command', 'mailbox', 'append', 'expunge', 'flags', 'acl', 'script', 'reset'];
+// event types that are streamed only when ?types= asks for them, the protocol trace of every session is a lot of data
+const OPT_IN_EVENT_TYPES = ['trace'];
 
 const sessionNumber = (origin: IMAPConnection | null | undefined) => (origin ? origin.sessionNumber : null);
 
@@ -101,8 +103,13 @@ function eventData(type: string, args: any[]): unknown {
             const { type: change, path, oldPath, origin } = args[0];
             return { type: change, path, oldPath, origin: sessionNumber(origin) };
         }
+        case 'append':
         case 'expunge':
             return { path: (args[0] as Mailbox).path, uids: (args[1] as Message[]).map(message => message.uid), origin: sessionNumber(args[2]) };
+        case 'trace': {
+            const { session, direction, data } = args[0];
+            return { session, direction, data: Buffer.from(data).toString('base64'), encoding: 'base64' };
+        }
         case 'flags':
             return {
                 path: (args[0] as Mailbox).path,
@@ -180,13 +187,17 @@ function getRoutes(server: IMAPServer, streams: Set<http.ServerResponse> = new S
         {
             method: 'GET',
             path: '/v1/events',
-            summary: 'Server events as Server-Sent Events (?types=session,command to choose: ' + EVENT_TYPES.join(', ') + ')',
+            summary:
+                'Server events as Server-Sent Events (?types=session,command to choose: ' +
+                EVENT_TYPES.concat(OPT_IN_EVENT_TYPES).join(', ') +
+                ', trace only when asked for)',
             handler: ({ query }) => {
                 const wanted = query.get('types');
                 const types = wanted === null ? EVENT_TYPES : wanted.split(',');
-                const unknown = types.filter(type => EVENT_TYPES.indexOf(type) < 0);
+                const known = EVENT_TYPES.concat(OPT_IN_EVENT_TYPES);
+                const unknown = types.filter(type => known.indexOf(type) < 0);
                 if (unknown.length) {
-                    throw storeError('Unknown event type ' + unknown.join(', ') + ', expected ' + EVENT_TYPES.join(', '), 'INVALID');
+                    throw storeError('Unknown event type ' + unknown.join(', ') + ', expected ' + known.join(', '), 'INVALID');
                 }
                 return { stream: eventStream(server, types, streams) };
             }

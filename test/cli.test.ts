@@ -5,6 +5,7 @@ import assert from 'node:assert';
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import tls from 'node:tls';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,6 +140,25 @@ describe('imapkit command', { skip: !built && 'run npm run build first' }, () =>
             () => execFileSync(process.execPath, [bin, '-p', '0', '--quirk=nope'], { encoding: 'utf-8', stdio: 'pipe' }),
             /Failed to start ImapKit: Unknown quirk "nope"/
         );
+    });
+
+    it('listens for implicit TLS connections with --tls-port', async () => {
+        const [port, tlsPort] = [await freePort(), await freePort()];
+        const child = spawn(process.execPath, [bin, '-p', String(port), '--tls-port=' + tlsPort], { stdio: ['ignore', 'pipe', 'inherit'] });
+        try {
+            await listening(child, new RegExp('listening for TLS connections on port ' + tlsPort));
+            const greeting = await new Promise<string>((resolve, reject) => {
+                const socket = tls.connect({ port: tlsPort, host: '127.0.0.1', rejectUnauthorized: false }, () => undefined);
+                socket.once('data', chunk => {
+                    socket.end();
+                    resolve(chunk.toString());
+                });
+                socket.on('error', reject);
+            });
+            assert.match(greeting, /^\* OK ImapKit ready/);
+        } finally {
+            child.kill();
+        }
     });
 
     it('starts the REST API with --rest-port', async () => {

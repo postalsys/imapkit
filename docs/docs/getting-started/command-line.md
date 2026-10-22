@@ -37,6 +37,7 @@ Install the command with `npm install -g imapkit`, or run it from a project that
 | `--rest-port=<port>`                      | `IMAPKIT_REST_PORT`   | Starts the [REST API](../rest-api/overview.md) on this port. `0` picks a free port, the startup output shows which.                                                                           |
 | `--rest-host=<address>`                   | `IMAPKIT_REST_HOST`   | Address of the REST API, `127.0.0.1` by default. Any address that is not a loopback address needs `--rest-token`. Only used together with `--rest-port`.                                      |
 | `--rest-token=<token>`                    | `IMAPKIT_REST_TOKEN`  | Bearer token that every REST request must send as `Authorization: Bearer <token>`. Only used together with `--rest-port`.                                                                     |
+| `--tls-port=<port>`                       | `IMAPKIT_TLS_PORT`    | Also listens for implicit TLS (IMAPS) connections on this port, next to the plaintext port of `-p`. Both serve the same mailboxes.                                                            |
 | `--smtpPort=<port>`, `--smtp-port=<port>` | `IMAPKIT_SMTPPORT`    | Starts an SMTP server on this port that appends every message it receives to INBOX. Needs the optional `smtp-server` package, see [Installation](installation.md#optional-the-smtp-listener). |
 | `-h`, `--help`                            |                       | Prints the options, every plugin with a short description, and sample config and storage files.                                                                                               |
 
@@ -76,7 +77,7 @@ ImapKit successfully listening on port 1143
 REST API listening on 127.0.0.1:8143
 ```
 
-Some useful keys besides the ones above: `debug`, `secureConnection`, `maxLiteralSize` (octets, 64 MiB by default), `appendLimit` and `messageLimit` (for the APPENDLIMIT and MESSAGELIMIT plugins), `id` (the ID plugin's answer), `quirks`, `scriptSeed`, `script`, `smtp` (`{ "port": 1025 }`) and `rest` (`{ "port", "host", "token" }`). `--rest-port` (with `--rest-host` and `--rest-token`) replaces the `rest` object of the file, and `--smtpPort` its `smtp` object.
+Some useful keys besides the ones above: `debug`, `secureConnection`, `maxLiteralSize` (octets, 64 MiB by default), `appendLimit` and `messageLimit` (for the APPENDLIMIT and MESSAGELIMIT plugins), `id` (the ID plugin's answer), `quirks`, `scriptSeed`, `script`, `tls` (`{ "port": 1993 }`), `smtp` (`{ "port": 1025 }`) and `rest` (`{ "port", "host", "token" }`). `--rest-port` (with `--rest-host` and `--rest-token`) replaces the `rest` object of the file, `--tls-port` its `tls` object and `--smtpPort` its `smtp` object.
 
 :::note
 `secureConnection` in the config file turns on TLS but does not change the default port, which stays 143. Set `port` in the file, or use `--secure`, which defaults the port to 993.

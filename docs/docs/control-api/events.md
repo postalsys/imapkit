@@ -1,7 +1,7 @@
 ---
 title: Events
 sidebar_position: 5
-description: Server events for sessions, commands, mailbox changes, expunges, flag changes, ACL changes, script rules and resets, and how to wait for them in tests instead of polling.
+description: Server events for sessions, commands, mailbox changes, new messages, expunges, flag changes, ACL changes, script rules and resets, and how to wait for them in tests instead of polling.
 ---
 
 # Events
@@ -13,11 +13,13 @@ The server is a Node.js `EventEmitter`. Its events tell a test what the client i
 | `session` | `{ type, session, command? }`                        | a session opens, logs in, selects, unselects, logs out, waits or closes |
 | `command` | `{ session, tag, command, status, user }`            | the tagged response of a command goes out                               |
 | `mailbox` | `{ type, path, oldPath, mailbox, origin, created? }` | a mailbox is created, deleted, renamed, subscribed or unsubscribed      |
+| `append`  | `(mailbox, messages, origin)`                        | messages are added                                                      |
 | `expunge` | `(mailbox, messages, origin)`                        | messages are removed                                                    |
 | `flags`   | `(mailbox, messages, origin)`                        | the control API changed flags                                           |
 | `acl`     | `(mailbox, previousAcl)`                             | an ACL changed (ACL plugin)                                             |
 | `script`  | `{ rule, event, session, tag, command }`             | a [script rule](../faults/scripted-faults.md) fired                     |
 | `reset`   | none                                                 | `control.reset()` restored the server                                   |
+| `trace`   | `{ session, direction, data }`                       | a session received or sent protocol data                                |
 
 Listeners run synchronously, while the server is in the middle of the change. Calling the control API from a listener is fine, its changes have no session as their origin like any other control API call.
 
@@ -86,6 +88,20 @@ server.control.createMailbox('Archive/2024');
 // create Archive/2024 [ 'Archive', 'Archive/2024' ]
 ```
 
+## append
+
+`(mailbox, messages, origin)`: the mailbox object, the added message objects and the session that added them (null for the control API and SMTP). It fires for every added message, from APPEND (once per message of a MULTIAPPEND), COPY, MOVE, REPLACE, the SMTP listener and the control API, after the message has its UID and before the sessions get their EXISTS responses.
+
+```javascript
+server.on('append', (mailbox, messages, origin) => {
+    console.log(
+        mailbox.path,
+        messages.map(message => message.uid),
+        origin && origin.sessionNumber
+    );
+});
+```
+
 ## expunge
 
 `(mailbox, messages, origin)`: the mailbox object, the removed message objects and the session that caused it (null for the control API). It fires for every removal, from EXPUNGE, CLOSE, MOVE, UID EXPUNGE and the control API, before the sessions get their EXPUNGE or VANISHED responses.
@@ -107,6 +123,18 @@ server.on('expunge', (mailbox, messages, origin) => {
 ## acl
 
 `(mailbox, previousAcl)` when an ACL changes, from SETACL, DELETEACL or the control API, with the ACL plugin loaded. `previousAcl` is a `Map` of identifier to a `Set` of rights. Read the new ACL with `control.getAcl(mailbox.path)`.
+
+## trace
+
+`{ session, direction, data }` for the protocol traffic of a session: the session number, `in` for what the client sent or `out` for what the server sent, and the octets as a Buffer. The trace is the IMAP layer, above TLS and COMPRESS=DEFLATE, so a session on the implicit TLS listener, after STARTTLS or after COMPRESS shows the same plaintext commands and responses as a plaintext one. A chunk is what one read or one write held: a command can arrive in several chunks, and one chunk can hold several commands or responses.
+
+Nothing is traced while no listener is registered, so the event costs nothing otherwise. The trace holds everything the client sends, including the passwords and tokens of LOGIN and AUTHENTICATE.
+
+```javascript
+server.on('trace', ({ session, direction, data }) => {
+    process.stdout.write(session + (direction === 'in' ? ' C: ' : ' S: ') + data.toString('binary'));
+});
+```
 
 ## script
 
