@@ -33,6 +33,8 @@ The setup, the app and the uninstaller are signed by **Postal Systems OÜ**. Eac
 
 For scripted installs, `ImapKitDesktop-Setup.exe /S` installs silently.
 
+The app comes with its own copy of Node.js and a few open source libraries, each under its own permissive license. Their license texts are in `THIRD-PARTY-NOTICES.txt` in the installation folder, Help > Third-Party Notices opens it.
+
 ## Getting started
 
 The server starts as soon as the app opens. With the default settings it listens on this computer only:
@@ -61,10 +63,23 @@ The banner at the top shows whether the server runs, and where. Stop and Start t
 
 - **Connection:** the address to listen on, `127.0.0.1` for this computer only or `0.0.0.0` for all network interfaces (to test from a phone, a virtual machine or another computer; Windows Firewall asks to allow it), and the IMAP, IMAPS and SMTP ports. IMAPS and SMTP can be turned off.
 - **Test accounts:** the user names and passwords IMAP accepts. All accounts see the same mailboxes.
-- **IMAP Extensions:** the capabilities the server advertises. Turn an extension off to see how a client copes without it, select one to read what it does. See [Extensions](../extensions/overview.md).
-- **Quirks:** [quirk presets](../faults/quirk-presets.md) that make the server behave like a known real server.
-- **Fault Scripts:** [script rules](../faults/scripted-faults.md) that make the server misbehave on purpose, like dropping the connection or answering slowly.
+  The tabs on the right change how the server behaves:
+
+- **Extensions:** the capabilities the server advertises. Turn an extension off to see how a client copes without it, select one to read what it does. See [Extensions](../extensions/overview.md).
+- **Limits & ID:** limits that make the server refuse what goes over them, the largest message (APPENDLIMIT), a quota for storage and message count (QUOTA, optionally only a warning), the messages per command (MESSAGELIMIT or SAVELIMIT) and the largest literal. Each limit shows whether the extension it needs is turned on. Below them, the answer to the ID command: the server says `ID NIL` unless you fill in fields like `name` and `version` and turn them on, to look like a server a client knows.
+- **Faults:** [quirk presets](../faults/quirk-presets.md) that make the server behave like a known real server, and [script rules](../faults/scripted-faults.md) that make it misbehave on purpose, like dropping the connection or answering slowly.
+- **SMTP:** rules of the SMTP server, see [SMTP rules](#smtp-rules).
 - **REST API:** turns on the [REST API](../rest-api/overview.md) of ImapKit, so a test script can change the mailboxes while the app runs.
+
+### SMTP rules
+
+![The SMTP tab with a rejected recipient](/img/desktop/server-smtp.png)
+
+To test how an app handles mail that is refused:
+
+- **Require a login** answers `530` to a client that sends without logging in. All mail then goes to the [Outbox](#inbox-and-outbox).
+- **Largest message** is advertised with `SIZE`, larger mail gets `552`.
+- **Rejected recipients** is a table of addresses that `RCPT TO` refuses with the reply code and text of the row. `*` matches anything, so `*@blocked.test` refuses a whole domain. Add Row adds one, double-click a cell (or press F2) to edit it, Tab moves to the next cell.
 
 ## The Connections page
 
@@ -114,6 +129,16 @@ The Client page is a plaintext client like `telnet` or `openssl s_client`, for t
 
 A session with this app's own servers also shows up on the Connections page, with its protocol log.
 
+## Running in the background
+
+ImapKit Desktop is a server, so closing the window while the server runs does not stop it: the app goes on in the notification area of the taskbar (on Windows 11 the icon may be under the ^ arrow until you pin it). Its tooltip shows where the server listens.
+
+- Click the icon to open the window again.
+- Right-click it to stop or start the server, or to exit.
+- **File > Exit** quits the app. With the server stopped, closing the window quits too.
+
+Starting ImapKit Desktop again while it runs opens the running copy, there is only one per user.
+
 ## Where the data is
 
 The mailboxes and settings are saved in `%APPDATA%\ImapKitDesktop` and survive restarts and updates.
@@ -139,5 +164,9 @@ The mailboxes and settings are saved in `%APPDATA%\ImapKitDesktop` and survive r
 **Mail sent by my app is not in the Inbox.** The app logged in to SMTP, so its mail is in the Outbox. See [Inbox and Outbox](#inbox-and-outbox).
 
 **Start over with clean mailboxes.** File > Reset Mailboxes.
+
+**I closed the window but clients can still connect.** The server keeps running in the notification area, see [Running in the background](#running-in-the-background). Right-click the icon and choose Exit to stop it.
+
+**A limit has no effect.** Most limits need their extension: the Limits & ID tab says next to each one whether it is turned on. Turn it on on the Extensions tab and click Apply Changes.
 
 Found a bug or missing a feature? Open an issue at [postalsys/imapkit-desktop](https://github.com/postalsys/imapkit-desktop/issues). Problems with the IMAP behavior itself belong to [ImapKit](https://github.com/postalsys/imapkit/issues).
