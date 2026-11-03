@@ -55,7 +55,8 @@ ul.scopes{list-style:none;padding:0;margin:0 0 12px;border:1px solid var(--line)
 ul.scopes li{display:flex;gap:10px;padding:8px 12px;border-top:1px solid var(--line);align-items:baseline}
 ul.scopes li:first-child{border-top:0}
 .ck{color:var(--ok);font-weight:700}
-.raw{margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);text-align:right;overflow-wrap:anywhere}
+ul.scopes li>span:nth-child(2){flex:1;min-width:0}
+.raw{margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
 .redir{font-size:13px;color:var(--muted);margin:0 0 16px;overflow-wrap:anywhere}
 .btns{display:flex;flex-direction:row-reverse;gap:10px;margin:0 0 12px}
 button{flex:1;font:inherit;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;text-align:center;text-decoration:none}
@@ -79,6 +80,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 6px}
 th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 footer{border-top:1px solid var(--line);padding:12px 26px;font-size:12.5px;color:var(--muted)}
+footer a{color:var(--accent)}
 @media (max-width:480px){body{padding:0}main{border-radius:0;border-left:0;border-right:0}.body{padding:20px 16px}footer{padding:12px 16px}}
 `;
 
@@ -163,7 +165,8 @@ export function consentPage(data: { request: PendingRequest; users: PageUser[]; 
         checks.push({ level: 'note', text: 'ignored parameters: ' + request.ignored.join(', ') });
     }
     const passed = checks.filter(check => check.level === 'ok').length;
-    const flagged = checks.length - passed;
+    const warnings = checks.filter(check => check.level === 'warn').length;
+    const notes = checks.length - passed - warnings;
     const hasWarning = checks.some(check => check.level === 'warn');
 
     let target = request.redirectUri;
@@ -255,7 +258,8 @@ export function consentPage(data: { request: PendingRequest; users: PageUser[]; 
         '><summary>Request details (' +
         passed +
         ' passed' +
-        (flagged ? ', ' + flagged + ' to look at' : '') +
+        (warnings ? ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') : '') +
+        (notes ? ', ' + notes + (notes === 1 ? ' note' : ' notes') : '') +
         ')</summary><ul class="checks">' +
         checks.map(check => '<li>' + checkTag(check) + '<span>' + escapeHtml(check.text) + '</span></li>').join('') +
         '</ul><p class="kv">' +
@@ -270,7 +274,7 @@ export function consentPage(data: { request: PendingRequest; users: PageUser[]; 
         '<button type="submit" name="action" value="outcome" formnovalidate>Send</button></div></details>' +
         '</form>';
     return layout('Sign in to ' + client.name, body, {
-        footer: 'Decision source if not answered here: ' + escapeHtml(request.source) + '. This request stays open for 10 minutes.'
+        footer: 'Shown because the sign-in policy is prompt (' + escapeHtml(request.source) + '). This request stays open for 10 minutes.'
     });
 }
 
@@ -340,5 +344,8 @@ export function indexPage(data: { issuer: string; consent: ConsentPolicy; client
         '</p><h2>Endpoints</h2><p class="small">' +
         endpoints.map(path => '<code>' + escapeHtml(path) + '</code>').join(' ') +
         '</p>';
-    return layout('OAuth provider', body, { wide: true, footer: 'Documentation: https://imapkit.com/docs/guides/oauth' });
+    return layout('OAuth provider', body, {
+        wide: true,
+        footer: 'Documentation: <a href="https://imapkit.com/docs/guides/oauth" rel="noreferrer">imapkit.com/docs/guides/oauth</a>'
+    });
 }
