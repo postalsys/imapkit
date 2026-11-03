@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.0](https://github.com/postalsys/imapkit/compare/v5.2.0...v5.3.0) (2026-11-03)
+
+
+### Features
+
+* built-in OAuth 2.0 / OpenID Connect provider for testing mail client sign-in ([97a608f](https://github.com/postalsys/imapkit/commit/97a608fbbd4d6175db648be6625d46d501ee1be3))
+
 ## [5.2.0](https://github.com/postalsys/imapkit/compare/v5.1.0...v5.2.0) (2026-10-22)
 
 
