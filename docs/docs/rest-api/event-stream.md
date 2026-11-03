@@ -39,13 +39,14 @@ The stream starts with the comment `: connected` as soon as the server listens f
 | `acl`     | an ACL changed (ACL plugin)                                             |
 | `script`  | a script rule fired                                                     |
 | `reset`   | the server was reset                                                    |
+| `oauth`   | the OAuth provider answered a sign-in, a token request or a token check |
 | `trace`   | a session received or sent protocol data, only when asked for           |
 
 An unknown type is refused before the stream starts:
 
 ```bash
 curl -s 'http://127.0.0.1:8143/v1/events?types=session,foo'
-# 400 {"error":{"code":"INVALID","message":"Unknown event type foo, expected session, command, mailbox, append, expunge, flags, acl, script, reset, trace"}}
+# 400 {"error":{"code":"INVALID","message":"Unknown event type foo, expected session, command, mailbox, append, expunge, flags, acl, script, reset, oauth, trace"}}
 ```
 
 ## Payloads
@@ -64,6 +65,7 @@ The data is the JSON form of the [server event](../control-api/events.md): mailb
 | `trace`   | `{ session, direction, data, encoding }`, `data` is base64 and `encoding` is `"base64"` |
 | `script`  | `{ rule, event, session, tag, command }`                                                |
 | `reset`   | `{}`                                                                                    |
+| `oauth`   | `{ type, ... }`, see [Events](../control-api/events.md#oauth)                           |
 
 ```
 event: acl

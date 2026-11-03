@@ -57,9 +57,22 @@ and show real responses. `{path}` is a mailbox [storage name, URL encoded](./ove
 | `GET`    | `/v1/mailboxes/{path}/metadata`         | `getMetadata()` (METADATA)                    | 200     |
 | `PUT`    | `/v1/mailboxes/{path}/metadata`         | `setMetadata()` (METADATA)                    | 200     |
 | `PUT`    | `/v1/mailboxes/{path}/special-use`      | `setSpecialUse()` (SPECIAL-USE)               | 200     |
+| `GET`    | `/v1/oauth`                             | `getOAuthInfo()` (oauth)                      | 200     |
+| `GET`    | `/v1/oauth/clients`                     | `listOAuthClients()` (oauth)                  | 200     |
+| `PUT`    | `/v1/oauth/clients/{id}`                | `setOAuthClient()` (oauth)                    | 200     |
+| `DELETE` | `/v1/oauth/clients/{id}`                | `deleteOAuthClient()` (oauth)                 | 200     |
+| `PUT`    | `/v1/oauth/consent`                     | `setOAuthConsent()` (oauth)                   | 200     |
+| `GET`    | `/v1/oauth/decisions`                   | `listOAuthDecisions()` (oauth)                | 200     |
+| `POST`   | `/v1/oauth/decisions`                   | `queueOAuthDecision()` (oauth)                | 201     |
+| `DELETE` | `/v1/oauth/decisions`                   | `clearOAuthDecisions()` (oauth)               | 200     |
+| `POST`   | `/v1/oauth/token-faults`                | `queueOAuthTokenFault()` (oauth)              | 201     |
+| `DELETE` | `/v1/oauth/token-faults`                | `clearOAuthTokenFaults()` (oauth)             | 200     |
+| `GET`    | `/v1/oauth/tokens`                      | `listOAuthTokens()` (oauth)                   | 200     |
+| `POST`   | `/v1/oauth/tokens/expire`               | `expireOAuthTokens()` (oauth)                 | 200     |
+| `POST`   | `/v1/oauth/tokens/revoke`               | `revokeOAuthTokens()` (oauth)                 | 200     |
 | `GET`    | `/v1/openapi.json`                      | the OpenAPI document                          | 200     |
 
-The plugin routes exist only while their plugin is loaded, without it they answer `404 NOTFOUND`.
+The plugin routes exist only while their plugin is loaded, and the OAuth routes only with the `oauth` option, without them they answer `404 NOTFOUND`.
 
 ## Server
 
@@ -402,6 +415,46 @@ curl http://127.0.0.1:8143/v1/mailboxes/INBOX/metadata
 ```bash
 curl -X PUT http://127.0.0.1:8143/v1/mailboxes/Sent/special-use -H 'Content-Type: application/json' -d '{"specialUse": ["\\Sent"]}'
 # {"path":"Sent","delimiter":"/","flags":["\\HasNoChildren"],"selectable":true,"subscribed":false,"messages":0,"unseen":0,"uidnext":1,"uidvalidity":5,"permanentFlags":["\\Answered","\\Flagged","\\Draft","\\Deleted","\\Seen"],"specialUse":["\\Sent"]}
+```
+
+## OAuth
+
+The routes of the [OAuth provider](../guides/oauth.md), with the `oauth` option or `--oauth-port`. The examples use a server started with `--oauth-port=8085` as well.
+
+`GET /v1/oauth` describes the provider: issuer, discovery URL, default consent policy, scopes, clients (without secrets) and the queued decisions and token faults.
+
+```bash
+curl http://127.0.0.1:8143/v1/oauth
+# {"issuer":"http://127.0.0.1:8085","discovery":"http://127.0.0.1:8085/.well-known/openid-configuration","consent":"prompt","mailScope":"mail","scopes":["openid","email","profile","offline_access","mail"],"clients":[{"id":"imapkit","name":"ImapKit test client","confidential":false,"redirectUris":["http://127.0.0.1/*","http://localhost/*","http://[::1]/*"],"consent":null},...],"decisions":[],"tokenFaults":[]}
+```
+
+`PUT /v1/oauth/clients/{id}` registers or replaces a client (`{ name, secret, redirectUris, consent }`), `DELETE` removes one. `PUT /v1/oauth/consent` sets the default policy (`{ consent }`).
+
+```bash
+curl -X PUT http://127.0.0.1:8143/v1/oauth/clients/my-mail-app -H 'Content-Type: application/json' -d '{"name":"My Mail App","consent":"approve"}'
+# {"id":"my-mail-app","name":"My Mail App","confidential":false,"redirectUris":["http://127.0.0.1/*","http://localhost/*","http://[::1]/*"],"consent":"approve"}
+curl -X PUT http://127.0.0.1:8143/v1/oauth/consent -H 'Content-Type: application/json' -d '{"consent":"deny"}'
+# {"consent":"deny"}
+```
+
+`POST /v1/oauth/decisions` queues the decision of the next sign-ins (`{ decision, client, user, count }`), `GET` lists and `DELETE` removes them. `POST /v1/oauth/token-faults` queues a fault of the token endpoint (`{ grant, error, description, status, html, delay, claims, count }`), `DELETE` removes them.
+
+```bash
+curl -X POST http://127.0.0.1:8143/v1/oauth/decisions -H 'Content-Type: application/json' -d '{"decision":{"error":"temporarily_unavailable"},"client":"my-mail-app"}'
+# {"id":1}
+curl http://127.0.0.1:8143/v1/oauth/decisions
+# [{"id":1,"decision":{"error":"temporarily_unavailable"},"client":"my-mail-app","remaining":1}]
+curl -X POST http://127.0.0.1:8143/v1/oauth/token-faults -H 'Content-Type: application/json' -d '{"grant":"refresh_token","error":"invalid_grant"}'
+# {"id":2}
+```
+
+`GET /v1/oauth/tokens` lists the issued tokens (`?user=`, `?client=`, `?type=access` or `refresh`). `POST /v1/oauth/tokens/expire` lets access tokens expire now and `POST /v1/oauth/tokens/revoke` revokes tokens, both with `{ user, client, token }` (and `type` for revoke), and answer with the count.
+
+```bash
+curl -X POST http://127.0.0.1:8143/v1/oauth/tokens/expire -H 'Content-Type: application/json' -d '{"user":"alice@example.com"}'
+# {"expired":1}
+curl -X POST http://127.0.0.1:8143/v1/oauth/tokens/revoke -H 'Content-Type: application/json' -d '{}'
+# {"revoked":2}
 ```
 
 ### Routes of custom plugins

@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
                 'guides/writing-client-tests',
                 'guides/storage',
                 'guides/authentication',
+                'guides/oauth',
                 'guides/strict-by-design',
                 'guides/multiple-sessions',
                 'guides/testing-from-other-languages'

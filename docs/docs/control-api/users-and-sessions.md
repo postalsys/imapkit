@@ -35,8 +35,10 @@ addUser(name: string, options: { password?: string; xoauth2?: { accessToken: str
 | `options.password`               | password for the LOGIN command and AUTHENTICATE PLAIN                                                                                                                      |
 | `options.xoauth2.accessToken`    | access token for XOAUTH2 and OAUTHBEARER                                                                                                                                   |
 | `options.xoauth2.sessionTimeout` | deprecated and ignored, stored with the token in milliseconds, default 3600000. ImapKit does not expire tokens, replace the token with `updateUser` to test an expired one |
+| `options.displayName`            | display name, the `name` claim of the [OAuth provider](../guides/oauth.md)                                                                                                 |
+| `options.oauth.consent`          | consent policy of sign-ins that name the user in `login_hint`, see [Choosing the outcome](../guides/oauth.md#choosing-the-outcome)                                         |
 
-**Errors:** `INVALID` for an empty name, a password that is not a string or an `xoauth2` without an `accessToken` string, `ALREADYEXISTS` for an existing user.
+**Errors:** `INVALID` for an empty name, a password that is not a string, an `xoauth2` without an `accessToken` string, a `displayName` that is not a string or an unknown consent policy, `ALREADYEXISTS` for an existing user.
 
 ```javascript
 server.control.addUser('alice', { password: 'secret' });
@@ -51,7 +53,7 @@ server.control.listUsers();
 updateUser(name: string, options: { password?: string; xoauth2?: { accessToken: string; sessionTimeout?: number } | null }): void
 ```
 
-Changes the password or the access token of a user. Options that are not given stay as they are, `xoauth2: null` removes the token. Sessions that are logged in already stay logged in. Use it to test how a client handles a password change or an expired token on its next login.
+Changes the password, the access token, the display name or the OAuth consent policy of a user. Options that are not given stay as they are, `xoauth2: null`, `displayName: null` and `oauth: null` remove them. Sessions that are logged in already stay logged in. Use it to test how a client handles a password change or an expired token on its next login.
 
 **Errors:** `NONEXISTENT` for an unknown user, `INVALID` as for `addUser()`.
 

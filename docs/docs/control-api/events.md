@@ -19,6 +19,7 @@ The server is a Node.js `EventEmitter`. Its events tell a test what the client i
 | `acl`     | `(mailbox, previousAcl)`                             | an ACL changed (ACL plugin)                                             |
 | `script`  | `{ rule, event, session, tag, command }`             | a [script rule](../faults/scripted-faults.md) fired                     |
 | `reset`   | none                                                 | `control.reset()` restored the server                                   |
+| `oauth`   | `{ type, ... }`                                      | the [OAuth provider](../guides/oauth.md) did something                  |
 | `trace`   | `{ session, direction, data }`                       | a session received or sent protocol data                                |
 
 Listeners run synchronously, while the server is in the middle of the change. Calling the control API from a listener is fine, its changes have no session as their origin like any other control API call.
@@ -143,6 +144,28 @@ server.on('trace', ({ session, direction, data }) => {
 ## reset
 
 No arguments. Emitted by `control.reset()` after the storage and users are restored. Plugins listen to it to restore their own state, and a long running test harness can use it to clear what it tracks.
+
+## oauth
+
+`{ type, ... }` from the [OAuth provider](../guides/oauth.md) of the `oauth` option. With `debug` the events are also written to the console.
+
+| `type`      | Data                                                                                             | When                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `authorize` | `{ client, user, decision, source, prompt }`, or `{ client, result, description }` for a refusal | an authorization request came in, `source` is the rung of the decision ladder that decided, like `client imapkit-approve` or `queued decision 3` |
+| `consent`   | `{ client, user, decision }`                                                                     | the consent page was answered                                                                                                                    |
+| `remember`  | `{ client, consent }`                                                                            | "Remember my choice" set the policy of a client                                                                                                  |
+| `code`      | `{ client, user, scope, source, fault }`                                                         | an authorization code was issued, `fault` is `wrong-state` or `wrong-iss`                                                                        |
+| `token`     | `{ grant, client, result, description }`                                                         | the token endpoint answered, `result` is `ok` or the OAuth error                                                                                 |
+| `revoke`    | `{ client, user, reason, tokens }`                                                               | tokens were revoked                                                                                                                              |
+| `access`    | `{ via, client, user, result, reason }`                                                          | IMAP (`via: 'imap'`) or SMTP checked an issued access token                                                                                      |
+
+```javascript
+server.on('oauth', event => {
+    if (event.type === 'access' && event.result !== 'ok') {
+        console.log('%s refused a token: %s', event.via, event.reason);
+    }
+});
+```
 
 ## Recipes
 
