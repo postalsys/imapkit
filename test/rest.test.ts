@@ -270,7 +270,7 @@ describe('REST API', () => {
             ['trace', 'in', 'base64', 'A1 LO'],
             ['trace', 'out', 'base64', 'A1 OK']
         ]);
-        assert.match((await call('GET', '/v1/events?types=nope')).body.error.message, /expected session, command, mailbox, append, .*, reset, trace$/);
+        assert.match((await call('GET', '/v1/events?types=nope')).body.error.message, /expected session, command, mailbox, append, .*, reset, oauth, trace$/);
     });
 
     it('ends open event streams on a graceful shutdown', async () => {

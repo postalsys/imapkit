@@ -5,7 +5,7 @@ import type { Callback, IMAPConnection, IMAPServer, ParsedCommand } from '../typ
  * @help Works with and without SASL-IR [RFC4959]
  * @help Valid login info, same as for XOAUTH2:
  * @help   Username (authzid, optional): testuser
- * @help   Access Token: testtoken
+ * @help   Access Token: testtoken, or a token of the OAuth provider
  */
 
 const KVSEP = '\x01';
@@ -114,21 +114,18 @@ export default function oauthbearerPlugin(server: IMAPServer) {
         }
         const token = bearer[1];
 
-        let username = request.authzid;
-        if (username === false) {
-            // without an authzid the token tells who the user is
-            username = Object.keys(server.users).find(name => {
-                const user = server.users[name];
-                return user && user.xoauth2 && user.xoauth2.accessToken === token;
-            });
+        // without an authzid the token tells who the user is
+        const result = server.checkAccessToken(token, request.authzid === false ? undefined : request.authzid);
+        if ('error' in result) {
+            return result.error;
         }
-        const user = server.getUser(username);
-        if (!user || !user.xoauth2 || user.xoauth2.accessToken !== token) {
-            return 'invalid_token';
-        }
-        request.username = username;
+        request.username = result.user;
         return false;
     };
+
+    // RFC 7628 section 3.2.2: with the OAuth provider the error result also says where to get a token and for which scope
+    const errorResult = (status: string) =>
+        server.oauth && server.oauth.issuer ? { status, scope: server.oauth.mailScope, 'openid-configuration': server.oauth.discoveryUrl() } : { status };
 
     // Decodes a base64 client response, sends BAD and returns false if it is not valid base64
     const decode = (connection: IMAPConnection, parsed: ParsedCommand, data: string, input: string) => {
@@ -186,7 +183,7 @@ export default function oauthbearerPlugin(server: IMAPServer) {
                 attributes: [
                     {
                         type: 'ATOM',
-                        value: Buffer.from(JSON.stringify({ status })).toString('base64')
+                        value: Buffer.from(JSON.stringify(errorResult(status))).toString('base64')
                     }
                 ]
             },

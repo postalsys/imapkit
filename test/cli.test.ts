@@ -161,6 +161,30 @@ describe('imapkit command', { skip: !built && 'run npm run build first' }, () =>
         }
     });
 
+    it('starts the OAuth provider with --oauth-port and --oauth-consent', async () => {
+        const [port, oauthPort] = [await freePort(), await freePort()];
+        const child = spawn(process.execPath, [bin, '-p', String(port), '--oauth-port=' + oauthPort, '--oauth-consent=deny'], {
+            stdio: ['ignore', 'pipe', 'inherit']
+        });
+        let output = '';
+        child.stdout?.on('data', chunk => (output += chunk));
+        try {
+            await listening(child, /Load the XOAUTH2 or OAUTHBEARER plugin/);
+            assert.match(
+                output,
+                new RegExp(
+                    'OAuth provider listening on http://127\\.0\\.0\\.1:' +
+                        oauthPort +
+                        ' \\(clients: imapkit, imapkit-approve, imapkit-deny; default consent: deny\\)'
+                )
+            );
+            const doc = (await (await fetch('http://127.0.0.1:' + oauthPort + '/.well-known/openid-configuration')).json()) as any;
+            assert.strictEqual(doc.issuer, 'http://127.0.0.1:' + oauthPort);
+        } finally {
+            child.kill();
+        }
+    });
+
     it('starts the REST API with --rest-port', async () => {
         const [port, restPort] = [await freePort(), await freePort()];
         const child = spawn(process.execPath, [bin, '-p', String(port), '--rest-port=' + restPort, '--rest-token=sekret'], {

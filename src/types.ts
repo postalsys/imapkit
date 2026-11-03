@@ -2,6 +2,8 @@
 
 import type { IMAPServer, IMAPConnection } from './server.js';
 import type { ScriptRule } from './script.js';
+import type { OAuthOptions } from './oauth/provider.js';
+import type { ConsentPolicy } from './oauth/policy.js';
 
 export type { IMAPServer, IMAPConnection };
 
@@ -232,6 +234,10 @@ export interface MailboxStatus {
 
 export interface UserData {
     password?: string | undefined;
+    /** the display name, the `name` claim of the OAuth provider */
+    displayName?: string | undefined;
+    /** OAuth provider settings of the user: the consent policy of sign-ins that name the user in login_hint */
+    oauth?: { consent?: ConsentPolicy | undefined } | undefined;
     xoauth2?:
         | {
               accessToken?: string | undefined;
@@ -261,6 +267,8 @@ export interface IMAPServerOptions {
     smtp?: { port?: number | undefined; host?: string | undefined } | undefined;
     /** starts the REST API with `server.start()`, see src/rest.ts. A host other than a loopback address needs a token */
     rest?: { port?: number | undefined; host?: string | undefined; token?: string | undefined } | undefined;
+    /** starts the OAuth 2.0 / OpenID Connect provider with `server.start()`, see src/oauth/provider.ts */
+    oauth?: OAuthOptions | undefined;
     credentials?: { key: string | Buffer; cert: string | Buffer } | undefined;
     debug?: boolean | undefined;
     systemFlags?: string[] | undefined;

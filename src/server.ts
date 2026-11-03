@@ -16,11 +16,15 @@ import { isSequenceSet } from './numbers.js';
 import { restoreNilAtoms, isAtom } from './arguments.js';
 import { refuseMissingTarget } from './commands/append.js';
 import { DEFAULT_SESSION_TIMEOUT, storeError, expungeMessages, notifyFlagChanges } from './store-operations.js';
-import { Control } from './control.js';
+import { Control, checkUserOAuth } from './control.js';
 import { resolveQuirks } from './quirks.js';
 import { validateStorage } from './storage-schema.js';
 import { createRestServer } from './rest.js';
 import type { RestServer } from './rest.js';
+import { OAuthProvider } from './oauth/provider.js';
+import type { TokenCheck } from './oauth/provider.js';
+import { createOAuthServer } from './oauth/http.js';
+import type http from 'node:http';
 import type { SessionInfo } from './control.js';
 import * as bundledCert from './cert.js';
 import { createSocketPair } from './memory-socket.js';
@@ -249,6 +253,10 @@ class IMAPServer extends Stream {
     declare smtpServer: SMTPListener | null;
     /** the HTTP server of the REST API that `start()` runs for the `rest` option */
     declare restServer: RestServer | null;
+    /** the OAuth 2.0 / OpenID Connect provider of the `oauth` option, see src/oauth/provider.ts */
+    declare oauth: OAuthProvider | null;
+    /** the HTTP server of the OAuth provider that `start()` runs */
+    declare oauthServer: http.Server | null;
 
     constructor(options?: IMAPServerOptions) {
         super();
@@ -343,6 +351,9 @@ class IMAPServer extends Stream {
 
         // plugins register their control operations
         this.control = new Control(this);
+        // registers its control operations too, so it exists only with the option
+        this.oauth = this.options.oauth ? new OAuthProvider(this, this.options.oauth) : null;
+        this.oauthServer = null;
 
         // a quirk preset can leave plugins out (no-move, no-uidplus)
         loadPlugins(this, this.options.plugins, quirks.removePlugins);
@@ -378,6 +389,13 @@ class IMAPServer extends Stream {
                       }
                   }
         );
+        // a typo in an OAuth consent policy fails here
+        for (const name of Object.keys(this.users)) {
+            const user = this.users[name];
+            if (user && user.oauth !== undefined) {
+                user.oauth = checkUserOAuth(user.oauth, 'users[' + JSON.stringify(name) + '].oauth');
+            }
+        }
     }
 
     /**
@@ -415,7 +433,8 @@ class IMAPServer extends Stream {
         await Promise.all([
             this.options.tls ? this.startTlsListener(host) : null,
             this.options.smtp ? this.startSmtp() : null,
-            this.options.rest ? this.startRest() : null
+            this.options.rest ? this.startRest() : null,
+            this.oauth ? this.startOAuth() : null
         ]);
         return imapPort;
     }
@@ -442,6 +461,43 @@ class IMAPServer extends Stream {
         const { port, host, token } = this.options.rest || {};
         this.restServer = createRestServer(this, { host, token });
         return listenOn(this.restServer, port, host || '127.0.0.1');
+    }
+
+    /**
+     * Starts the HTTP server of the OAuth provider (the `oauth` option, see src/oauth/http.ts). The issuer is its
+     * URL unless the `issuer` option sets another
+     *
+     * @return {Promise<Number>} resolves with the HTTP port
+     */
+    async startOAuth(): Promise<number> {
+        const oauth = this.oauth as OAuthProvider;
+        const { port, host = '127.0.0.1', secure } = oauth.options;
+        this.oauthServer = createOAuthServer(oauth, { secure, host, credentials: this.getCredentials() });
+        const listening = await listenOn(this.oauthServer, port, host);
+        oauth.listening(host, listening);
+        return listening;
+    }
+
+    /**
+     * Checks a bearer token of an IMAP or SMTP login: a token of the OAuth provider, or the static
+     * `xoauth2.accessToken` of a user, which never expires
+     *
+     * @param {String} token Access token
+     * @param {String} [username] The user the client logs in as, the owner of the token if not set
+     * @param {String} [via] "imap" or "smtp", for the events of the provider
+     * @return {Object} `{ user }`, or `{ error, reason }` with the OAuth error code (invalid_token, insufficient_scope)
+     */
+    checkAccessToken(token: string, username?: string, via = 'imap'): TokenCheck {
+        const issued = this.oauth && this.oauth.verifyAccessToken(token, username, via);
+        if (issued) {
+            return issued;
+        }
+        const owns = (name: string) => {
+            const user = this.users[name];
+            return !!(user && user.xoauth2 && user.xoauth2.accessToken === token);
+        };
+        const user = username === undefined ? Object.keys(this.users).find(owns) : owns(username) ? username : undefined;
+        return user === undefined ? { error: 'invalid_token', reason: 'unknown access token' } : { user };
     }
 
     /**
@@ -534,7 +590,7 @@ class IMAPServer extends Stream {
     }
 
     /**
-     * Stops the SMTP and REST listeners of `start()`
+     * Stops the SMTP, REST and OAuth listeners of `start()`
      *
      * @param {Boolean} force true closes the open REST connections too, otherwise only the idle ones (a request that
      *   is answered, like POST /v1/shutdown, finishes first)
@@ -547,14 +603,12 @@ class IMAPServer extends Stream {
         if (this.restServer) {
             // event streams never end on their own, a graceful shutdown would wait for them forever
             this.restServer.endStreams?.();
-            this.restServer.close();
-            // keep-alive connections would hold the server open
-            if (force) {
-                this.restServer.closeAllConnections?.();
-            } else {
-                this.restServer.closeIdleConnections?.();
-            }
+            closeHttp(this.restServer, force);
             this.restServer = null;
+        }
+        if (this.oauthServer) {
+            closeHttp(this.oauthServer, force);
+            this.oauthServer = null;
         }
     }
 
@@ -659,7 +713,8 @@ class IMAPServer extends Stream {
      * @return {Object|false} User data or false if there is no such user
      */
     getUser(username: unknown): UserData | false {
-        return (typeof username === 'string' && this.users[username]) || false;
+        // users is a null-prototype object, but a plain object from the control API or a test may still be assigned
+        return (typeof username === 'string' && Object.hasOwn(this.users, username) && this.users[username]) || false;
     }
 
     /**
@@ -3920,6 +3975,22 @@ const IS_DENO = 'Deno' in globalThis;
  */
 function nextTurn(fn: () => void): ReturnType<typeof setTimeout> | ReturnType<typeof setImmediate> {
     return IS_DENO ? setTimeout(fn, 0) : setImmediate(fn);
+}
+
+/**
+ * Stops an HTTP listener of `start()`
+ *
+ * @param {Object} server HTTP server
+ * @param {Boolean} force true closes the open connections too, otherwise only the idle ones (keep-alive connections
+ *   would hold the server open)
+ */
+function closeHttp(server: http.Server, force: boolean): void {
+    server.close();
+    if (force) {
+        server.closeAllConnections?.();
+    } else {
+        server.closeIdleConnections?.();
+    }
 }
 
 /**

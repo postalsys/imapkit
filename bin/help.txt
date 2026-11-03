@@ -31,6 +31,15 @@ Usage: imapkit [OPTS]
   --rest-host=<address>    Address of the REST API, defaults to 127.0.0.1.
                            Any other than a loopback address needs a token
   --rest-token=<token>     Bearer token that REST requests must send
+  --oauth-port=<port>      Starts the OAuth 2.0 / OpenID Connect provider:
+                           tokens for IMAP (XOAUTH2, OAUTHBEARER) and SMTP
+                           (AUTH XOAUTH2), no passwords, see "OAuth" below
+  --oauth-host=<address>   Address of the OAuth provider, 127.0.0.1 default
+  --oauth-consent=<policy> What a sign-in does: prompt (consent page, the
+                           default), approve or deny (redirect right away)
+  --oauth-secure=true      Serves the OAuth provider over HTTPS with the
+                           bundled localhost certificate
+  --oauth-issuer=<url>     Public base URL of the OAuth provider (a tunnel)
   --quirk=<name>           Makes the server behave like a known real server
                            (james-fetchgroup, james-late-fetch,
                            yahoo-quoted-sections, m365-throttle, no-uidplus,
@@ -42,7 +51,9 @@ The options can also be set with environment variables: IMAPKIT_PORT,
 IMAPKIT_SECURE, IMAPKIT_DEBUG, IMAPKIT_STORAGE, IMAPKIT_CONFIG,
 IMAPKIT_SCRIPT, IMAPKIT_PLUGINS (comma separated), IMAPKIT_TLS_PORT,
 IMAPKIT_SMTPPORT, IMAPKIT_REST_PORT, IMAPKIT_REST_HOST, IMAPKIT_REST_TOKEN,
-IMAPKIT_QUIRKS and IMAPKIT_SCRIPT_SEED.
+IMAPKIT_OAUTH_PORT, IMAPKIT_OAUTH_HOST, IMAPKIT_OAUTH_CONSENT,
+IMAPKIT_OAUTH_SECURE, IMAPKIT_OAUTH_ISSUER, IMAPKIT_QUIRKS and
+IMAPKIT_SCRIPT_SEED.
 
 NB! If port or smtpPort values are below 1024 you most probably need to
 use sudo or run the command with administrator rights.
@@ -79,6 +90,19 @@ Configuration file takes the following structure
         "key": "value"
     }
 }
+
+OAuth
+-----
+
+--oauth-port starts a test identity provider. Its discovery document is
+at <issuer>/.well-known/openid-configuration. Three public clients are
+registered (loopback redirect URIs on any port, PKCE S256 required):
+"imapkit" follows the default consent policy, "imapkit-approve" always
+approves and "imapkit-deny" always denies. The consent page needs no
+password: pick an account and click Allow or Deny. The email claim is
+the user name, so use address-style user names for OAuth tests. Load
+SASL-IR with XOAUTH2 or OAUTHBEARER to log in to IMAP with the tokens.
+More clients, scopes and policies go into "oauth" of the --config file.
 
 Scripted faults
 ---------------

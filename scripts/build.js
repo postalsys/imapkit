@@ -14,7 +14,7 @@
 // 4. Collects the `@help` lines of the plugins into dist/plugin-help.json for `imapkit --help`.
 // 5. Bundles dist/esm into dist/browser/imapkit.js (`imapkit/browser`), one ES module for browsers.
 //    The Node builtins are replaced with the shims in scripts/browser/: Buffer and EventEmitter
-//    come from the buffer and events packages, sockets, TLS, the REST API and SMTP throw, and the
+//    come from the buffer and events packages, sockets, TLS, the REST API, the OAuth provider and SMTP throw, and the
 //    COMPRESS plugin throws when it is loaded.
 //    Browsers connect with server.connect(), see the README "Run in a browser".
 
@@ -112,6 +112,7 @@ const BROWSER_SHIMS = {
     'node:tls': 'net.js',
     'node:util': 'util.js',
     'node:http': 'unsupported.js',
+    'node:https': 'unsupported.js',
     'node:crypto': 'unsupported.js',
     'smtp-server': 'smtp-server.js'
 };

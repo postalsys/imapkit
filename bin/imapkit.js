@@ -27,6 +27,11 @@ const { values: argv } = parseArgs({
         'rest-port': { type: 'string' },
         'rest-host': { type: 'string' },
         'rest-token': { type: 'string' },
+        'oauth-port': { type: 'string' },
+        'oauth-host': { type: 'string' },
+        'oauth-consent': { type: 'string' },
+        'oauth-secure': { type: 'boolean' },
+        'oauth-issuer': { type: 'string' },
         quirk: { type: 'string', multiple: true },
         'script-seed': { type: 'string' }
     }
@@ -53,6 +58,11 @@ const tlsPort = argv['tls-port'] || process.env.IMAPKIT_TLS_PORT;
 const restPort = argv['rest-port'] || process.env.IMAPKIT_REST_PORT;
 const restHost = argv['rest-host'] || process.env.IMAPKIT_REST_HOST;
 const restToken = argv['rest-token'] || process.env.IMAPKIT_REST_TOKEN;
+const oauthPort = argv['oauth-port'] || process.env.IMAPKIT_OAUTH_PORT;
+const oauthHost = argv['oauth-host'] || process.env.IMAPKIT_OAUTH_HOST;
+const oauthConsent = argv['oauth-consent'] || process.env.IMAPKIT_OAUTH_CONSENT;
+const oauthSecure = isTrue(argv['oauth-secure'] || process.env.IMAPKIT_OAUTH_SECURE);
+const oauthIssuer = argv['oauth-issuer'] || process.env.IMAPKIT_OAUTH_ISSUER;
 const quirksList = listOption(argv.quirk || process.env.IMAPKIT_QUIRKS);
 const scriptSeed = argv['script-seed'] || process.env.IMAPKIT_SCRIPT_SEED;
 const pluginsList = listOption(argv.plugin || process.env.IMAPKIT_PLUGINS).map(plugin => plugin.toUpperCase());
@@ -123,6 +133,18 @@ if (argv.help) {
     if (restPort) {
         config.rest = { port: Number(restPort), host: restHost, token: restToken };
     }
+    if (oauthPort) {
+        // the other oauth options (clients, scopes ...) come from the --config file
+        config.oauth = Object.assign({}, config.oauth, { port: Number(oauthPort) });
+        for (const [key, value] of Object.entries({ host: oauthHost, consent: oauthConsent, issuer: oauthIssuer })) {
+            if (value) {
+                config.oauth[key] = value;
+            }
+        }
+        if (oauthSecure) {
+            config.oauth.secure = true;
+        }
+    }
     if (smtpPort) {
         // smtp-server is an optional dependency, start() loads it only when SMTP is enabled
         config.smtp = { port: Number(smtpPort) };
@@ -145,6 +167,19 @@ if (argv.help) {
             }
             if (server.restServer) {
                 console.log('REST API listening on %s:%s', (config.rest && config.rest.host) || '127.0.0.1', server.restServer.address().port);
+            }
+            if (server.oauthServer) {
+                const clients = server.control.listOAuthClients().map(client => client.id);
+                const consent = server.oauth.consent;
+                console.log(
+                    'OAuth provider listening on %s (clients: %s; default consent: %s)',
+                    server.oauth.issuer,
+                    clients.join(', '),
+                    typeof consent === 'string' ? consent : 'error ' + consent.error
+                );
+                if (!server.capabilities['AUTH=XOAUTH2'] && !server.capabilities['AUTH=OAUTHBEARER']) {
+                    console.log('Load the XOAUTH2 or OAUTHBEARER plugin (with SASL-IR) to log in to IMAP with its tokens');
+                }
             }
             if (server.smtpServer) {
                 console.log('Incoming SMTP server up and running on port %s', server.smtpServer.server.address().port);

@@ -142,6 +142,21 @@ ImapKit follows these of the strategies that RFC 2180 (IMAP4 Multi-Accessed Mail
 
 By default the only account is user name `"testuser"` with password `"testpass"` (and access token `"testtoken"` for XOAUTH2 and OAUTHBEARER). The `users` option replaces the default account list, for example `{ "testuser": { "password": "testpass" }, "otheruser": { "password": "secret" } }`, and `server.control.addUser()` adds users at runtime (see [Control API](#control-api)). All users share the same mailbox tree.
 
+## OAuth 2.0 and OpenID Connect
+
+The `oauth` option (`--oauth-port`) starts a test identity provider, so a mail client can run its whole OAuth sign-in against ImapKit: the authorization code flow with PKCE, a consent page that needs no password, and tokens that log in to IMAP (XOAUTH2, OAUTHBEARER) and SMTP (AUTH XOAUTH2), expire on the server clock, refresh and can be revoked.
+
+```javascript
+const server = imapkit({
+    plugins: ['SASL-IR', 'XOAUTH2', 'OAUTHBEARER'],
+    users: { 'alice@example.com': { password: 'pw', displayName: 'Alice' }, 'denied@example.com': { password: 'pw', oauth: { consent: 'deny' } } },
+    oauth: { port: 8085 }
+});
+await server.start(1143); // discovery: http://127.0.0.1:8085/.well-known/openid-configuration
+```
+
+A consent policy decides every sign-in, from the first that has one: a queued decision (`control.queueOAuthDecision()`), the user that `login_hint` names, the client, the server default. `prompt` shows the consent page (pick an account, Allow or Deny), `approve` and `deny` redirect right away with a plain HTTP 302, so a test can follow the redirect without a browser, and an error object answers with that error. The clients `imapkit`, `imapkit-approve` and `imapkit-deny` are registered by default, with loopback redirect URIs on any port. The ID token's `email` claim is the user name, so use address-style user names for OAuth tests. The provider is strict like the IMAP side: PKCE S256 for public clients, single-use codes, exact redirect URIs, no unknown scopes. Token faults, forced expiry and revocation are in the control API and the REST API. See [OAuth 2.0 and OpenID Connect](https://imapkit.com/docs/guides/oauth).
+
 ## Status
 
 ### IMAP4rev1
@@ -480,7 +495,7 @@ The REST API controls the whole server, including the mail of every user, so it 
 
 Requests and responses are JSON, and every POST needs `Content-Type: application/json`, also without a body (HTTP 415 otherwise). Errors are `{ "error": { "code", "message" } }` with HTTP status 404 for `NONEXISTENT`, 409 for `ALREADYEXISTS` and the response codes of a failed mailbox operation (`CANNOT`, `HASCHILDREN` ...), 400 for `INVALID`, 401 for a missing or wrong token, 404 `NOTFOUND` and 405 `METHOD` for an unknown route or method, 413 `TOOBIG` for a body over 64 MiB (and `addMessage` checks refused by APPENDLIMIT), 500 for a server error. A mailbox is its storage name (modified UTF-7) in the URL, URL encoded with a `/` in the name as `%2F` (`/v1/mailboxes/Work%2FProjects`). Message sources are base64 in responses (`"encoding": "base64"`), a request sends `raw` as text or as base64 with `"encoding": "base64"`. `GET /v1/openapi.json` describes every endpoint.
 
-`GET /v1/events` streams the [events](#events) as [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (`event: <type>` with JSON `data`), so a test in another language can wait for "the client selected INBOX" or "a script rule fired" without polling. `?types=session,command` chooses the types (`session`, `command`, `mailbox`, `append`, `expunge`, `flags`, `acl`, `script`, `reset`, and `trace`, which is only sent when asked for, with base64 `data`), mailboxes are paths, messages UIDs and sessions numbers in the data:
+`GET /v1/events` streams the [events](#events) as [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (`event: <type>` with JSON `data`), so a test in another language can wait for "the client selected INBOX" or "a script rule fired" without polling. `?types=session,command` chooses the types (`session`, `command`, `mailbox`, `append`, `expunge`, `flags`, `acl`, `script`, `reset`, `oauth`, and `trace`, which is only sent when asked for, with base64 `data`), mailboxes are paths, messages UIDs and sessions numbers in the data:
 
 ```bash
 curl -N 'http://127.0.0.1:8143/v1/events?types=session'
@@ -488,26 +503,27 @@ curl -N 'http://127.0.0.1:8143/v1/events?types=session'
 # data: {"type":"select","session":{"session":1,"user":"testuser","state":"Selected","mailbox":"INBOX",...}}
 ```
 
-| Endpoint                                                                                             | Control API                                                                            |
-| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `GET /v1/snapshot`                                                                                   | `snapshot()`                                                                           |
-| `POST /v1/reset`                                                                                     | `reset()`                                                                              |
-| `POST /v1/shutdown` (`{ graceful }`)                                                                 | `shutdown()`                                                                           |
-| `GET /v1/sessions`, `DELETE /v1/sessions/{n}` (`{ text, reset }`)                                    | `sessions()`, `disconnect()`                                                           |
-| `POST /v1/sessions/{n}/inject` (`{ data, encoding }`)                                                | `inject()`                                                                             |
-| `GET`, `POST /v1/users`, `PUT`, `DELETE /v1/users/{name}`                                            | `listUsers()`, `addUser()`, `updateUser()`, `deleteUser()`                             |
-| `GET`, `POST /v1/mailboxes`, `GET`, `DELETE /v1/mailboxes/{path}`                                    | `listMailboxes()`, `createMailbox()`, `getMailbox()`, `deleteMailbox()`                |
-| `POST /v1/mailboxes/{path}/rename` (`{ newPath }`)                                                   | `renameMailbox()`                                                                      |
-| `PUT`, `DELETE /v1/mailboxes/{path}/subscription`                                                    | `subscribe()`, `unsubscribe()`                                                         |
-| `POST /v1/mailboxes/{path}/uidvalidity`                                                              | `resetUidValidity()`                                                                   |
-| `GET /v1/mailboxes/{path}/messages` (`?uids=1,2&raw=true`), `POST` (`{ raw, flags }`)                | `listMessages()`, `addMessage()`                                                       |
-| `GET`, `DELETE /v1/mailboxes/{path}/messages/{uid}`                                                  | `getMessage()`, `expungeMessages()`                                                    |
-| `POST /v1/mailboxes/{path}/messages/flags`, `.../expunge`, `.../copy`, `.../move`                    | `setFlags()`, `expungeMessages()`, `copyMessages()`, `moveMessages()`                  |
-| `GET /v1/mailboxes/{path}/acl`, `PUT`, `DELETE /v1/mailboxes/{path}/acl/{identifier}` (`{ rights }`) | `getAcl()`, `setAcl()`, `deleteAcl()` (ACL)                                            |
-| `GET`, `PUT /v1/quota`                                                                               | `getQuota()`, `setQuota()` (QUOTA)                                                     |
-| `GET`, `PUT /v1/metadata`, `GET`, `PUT /v1/mailboxes/{path}/metadata`                                | `getMetadata()`, `setMetadata()` (METADATA)                                            |
-| `PUT /v1/mailboxes/{path}/special-use` (`{ specialUse }`)                                            | `setSpecialUse()` (SPECIAL-USE)                                                        |
-| `GET`, `POST`, `DELETE /v1/script/rules`, `DELETE /v1/script/rules/{id}`                             | [script rules](#scripted-faults) in their JSON form, so runtime faults need no restart |
+| Endpoint                                                                                                                       | Control API                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `GET /v1/snapshot`                                                                                                             | `snapshot()`                                                                           |
+| `POST /v1/reset`                                                                                                               | `reset()`                                                                              |
+| `POST /v1/shutdown` (`{ graceful }`)                                                                                           | `shutdown()`                                                                           |
+| `GET /v1/sessions`, `DELETE /v1/sessions/{n}` (`{ text, reset }`)                                                              | `sessions()`, `disconnect()`                                                           |
+| `POST /v1/sessions/{n}/inject` (`{ data, encoding }`)                                                                          | `inject()`                                                                             |
+| `GET`, `POST /v1/users`, `PUT`, `DELETE /v1/users/{name}`                                                                      | `listUsers()`, `addUser()`, `updateUser()`, `deleteUser()`                             |
+| `GET`, `POST /v1/mailboxes`, `GET`, `DELETE /v1/mailboxes/{path}`                                                              | `listMailboxes()`, `createMailbox()`, `getMailbox()`, `deleteMailbox()`                |
+| `POST /v1/mailboxes/{path}/rename` (`{ newPath }`)                                                                             | `renameMailbox()`                                                                      |
+| `PUT`, `DELETE /v1/mailboxes/{path}/subscription`                                                                              | `subscribe()`, `unsubscribe()`                                                         |
+| `POST /v1/mailboxes/{path}/uidvalidity`                                                                                        | `resetUidValidity()`                                                                   |
+| `GET /v1/mailboxes/{path}/messages` (`?uids=1,2&raw=true`), `POST` (`{ raw, flags }`)                                          | `listMessages()`, `addMessage()`                                                       |
+| `GET`, `DELETE /v1/mailboxes/{path}/messages/{uid}`                                                                            | `getMessage()`, `expungeMessages()`                                                    |
+| `POST /v1/mailboxes/{path}/messages/flags`, `.../expunge`, `.../copy`, `.../move`                                              | `setFlags()`, `expungeMessages()`, `copyMessages()`, `moveMessages()`                  |
+| `GET /v1/mailboxes/{path}/acl`, `PUT`, `DELETE /v1/mailboxes/{path}/acl/{identifier}` (`{ rights }`)                           | `getAcl()`, `setAcl()`, `deleteAcl()` (ACL)                                            |
+| `GET`, `PUT /v1/quota`                                                                                                         | `getQuota()`, `setQuota()` (QUOTA)                                                     |
+| `GET`, `PUT /v1/metadata`, `GET`, `PUT /v1/mailboxes/{path}/metadata`                                                          | `getMetadata()`, `setMetadata()` (METADATA)                                            |
+| `PUT /v1/mailboxes/{path}/special-use` (`{ specialUse }`)                                                                      | `setSpecialUse()` (SPECIAL-USE)                                                        |
+| `GET`, `POST`, `DELETE /v1/script/rules`, `DELETE /v1/script/rules/{id}`                                                       | [script rules](#scripted-faults) in their JSON form, so runtime faults need no restart |
+| `GET /v1/oauth`, `/v1/oauth/clients`, `/v1/oauth/consent`, `/v1/oauth/decisions`, `/v1/oauth/token-faults`, `/v1/oauth/tokens` | the [OAuth provider](#oauth-20-and-openid-connect), with the `oauth` option            |
 
 ## Scripted faults
 

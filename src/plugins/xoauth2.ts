@@ -8,7 +8,7 @@ import type { Callback, IMAPConnection, IMAPServer, ParsedCommand } from '../typ
  * @help SASL-IR enabled and used while Gmail does not
  * @help Valid login info:
  * @help   Username: testuser
- * @help   Access Token: testtoken
+ * @help   Access Token: testtoken, or a token of the OAuth provider
  */
 
 const utf8 = new TextDecoder('utf-8', { fatal: true });
@@ -122,7 +122,7 @@ export default function xoauth2Plugin(server: IMAPServer) {
             return callback();
         }
 
-        if (!userData.xoauth2 || userData.xoauth2.accessToken !== accessToken) {
+        if ('error' in server.checkAccessToken(accessToken, user)) {
             connection.send(
                 {
                     tag: '+',
@@ -133,7 +133,8 @@ export default function xoauth2Plugin(server: IMAPServer) {
                                 JSON.stringify({
                                     status: '400',
                                     schemes: 'Bearer',
-                                    scope: 'https://mail.google.com/'
+                                    // the scope the OAuth provider of this server asks for, Gmail's without one
+                                    scope: server.oauth ? server.oauth.mailScope : 'https://mail.google.com/'
                                 })
                             ).toString('base64')
                         }

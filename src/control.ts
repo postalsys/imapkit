@@ -22,6 +22,8 @@ import {
     unsubscribeMailbox
 } from './store-operations.js';
 import type { FlagMode, UidValidityOptions } from './store-operations.js';
+import { checkOutcome } from './oauth/policy.js';
+import type { ConsentPolicy } from './oauth/policy.js';
 import type { IMAPConnection, IMAPServer, Mailbox, Message, StorageMailbox, StorageNamespace, UserData } from './types.js';
 
 /** A mailbox as `getMailbox()` and `listMailboxes()` describe it */
@@ -87,7 +89,7 @@ interface NewMessage {
 }
 
 /** The credentials of a user, see UserData */
-type UserOptions = Pick<UserData, 'password' | 'xoauth2'>;
+type UserOptions = Pick<UserData, 'password' | 'xoauth2' | 'displayName' | 'oauth'>;
 
 /** What a REST route handler gets, see src/rest.ts */
 interface RouteRequest {
@@ -147,6 +149,21 @@ const NAMESPACE_SKIP = new Set(['folders']);
 // properties the server derives when it loads a mailbox, a snapshot leaves them out
 const DERIVED_MAILBOX_KEYS = new Set(['path', 'namespace', 'messages', 'folders', 'subscribed', 'flags']);
 const DERIVED_FLAGS = new Set(['\\HasChildren', '\\HasNoChildren']);
+
+/**
+ * Checks the `oauth` settings of a user
+ *
+ * @param {*} value `{ consent }`
+ * @param {String} what Setting name for the error message
+ * @return {Object} a copy
+ */
+function checkUserOAuth(value: unknown, what: string): { consent?: ConsentPolicy } {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new ImapKitError(what + ' must be { consent }', 'INVALID');
+    }
+    const { consent } = value as { consent?: unknown };
+    return consent === undefined ? {} : { consent: checkOutcome(consent, what + '.consent') as ConsentPolicy };
+}
 
 class Control {
     // plugins add their operations with register()
@@ -649,7 +666,7 @@ class Control {
      * Adds a user
      *
      * @param {String} name User name
-     * @param {Object} options `{ password, xoauth2: { accessToken, sessionTimeout } }`
+     * @param {Object} options `{ password, xoauth2: { accessToken, sessionTimeout }, displayName, oauth: { consent } }`
      */
     addUser(name: string, options: UserOptions): void {
         if (typeof name !== 'string' || !name) {
@@ -662,10 +679,10 @@ class Control {
     }
 
     /**
-     * Changes the password or the XOAUTH2 token of a user
+     * Changes the password, the XOAUTH2 token, the display name or the OAuth consent policy of a user
      *
      * @param {String} name User name
-     * @param {Object} options `{ password, xoauth2 }`, null xoauth2 removes the token
+     * @param {Object} options `{ password, xoauth2, displayName, oauth }`, null xoauth2, displayName or oauth removes it
      */
     updateUser(name: string, options: UserOptions): void {
         this.server.users[name] = this.userData(this.requireUser(name), options);
@@ -693,8 +710,21 @@ class Control {
     }
 
     userData(user: UserData, options: UserOptions): UserData {
-        const { password, xoauth2 } = options || ({} as UserOptions);
+        const { password, xoauth2, displayName, oauth } = options || ({} as UserOptions);
         const result: UserData = Object.assign({}, user);
+        if (displayName === null) {
+            delete result.displayName;
+        } else if (displayName !== undefined) {
+            if (typeof displayName !== 'string') {
+                throw new ImapKitError('displayName must be a string', 'INVALID');
+            }
+            result.displayName = displayName;
+        }
+        if (oauth === null) {
+            delete result.oauth;
+        } else if (oauth !== undefined) {
+            result.oauth = checkUserOAuth(oauth, 'oauth');
+        }
         if (password !== undefined) {
             if (typeof password !== 'string') {
                 throw new ImapKitError('Password must be a string', 'INVALID');
@@ -789,5 +819,5 @@ class Control {
     }
 }
 
-export { Control, ImapKitError };
+export { Control, ImapKitError, checkUserOAuth };
 export type { MailboxInfo, MessageInfo, SessionInfo, NewMessage, UserOptions, SessionFilter, ControlRoute, RouteRequest };

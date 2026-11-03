@@ -84,7 +84,7 @@ function decodeBody(value: unknown, encoding: unknown): unknown {
 }
 
 // the server events that GET /v1/events streams by default
-const EVENT_TYPES = ['session', 'command', 'mailbox', 'append', 'expunge', 'flags', 'acl', 'script', 'reset'];
+const EVENT_TYPES = ['session', 'command', 'mailbox', 'append', 'expunge', 'flags', 'acl', 'script', 'reset', 'oauth'];
 // event types that are streamed only when ?types= asks for them, the protocol trace of every session is a lot of data
 const OPT_IN_EVENT_TYPES = ['trace'];
 
@@ -229,18 +229,18 @@ function getRoutes(server: IMAPServer, streams: Set<http.ServerResponse> = new S
         {
             method: 'POST',
             path: '/v1/users',
-            summary: 'Adds a user ({ name, password, xoauth2 })',
+            summary: 'Adds a user ({ name, password, xoauth2, displayName, oauth })',
             handler: ({ body }) => {
-                control.addUser(body.name, { password: body.password, xoauth2: body.xoauth2 });
+                control.addUser(body.name, { password: body.password, xoauth2: body.xoauth2, displayName: body.displayName, oauth: body.oauth });
                 return { status: 201, body: { name: body.name } };
             }
         },
         {
             method: 'PUT',
             path: '/v1/users/{name}',
-            summary: 'Changes the password or the XOAUTH2 token of a user',
+            summary: 'Changes the password, the XOAUTH2 token, the display name (displayName) or the OAuth settings ({ oauth: { consent } }) of a user',
             handler: ({ params, body }) => {
-                control.updateUser(params.name, { password: body.password, xoauth2: body.xoauth2 });
+                control.updateUser(params.name, { password: body.password, xoauth2: body.xoauth2, displayName: body.displayName, oauth: body.oauth });
                 return { name: params.name };
             }
         },
@@ -485,11 +485,45 @@ function matchRoute(routes: Route[], method: string, pathname: string): { route:
  */
 function hasToken(header: string | undefined, token: string): boolean {
     const match = /^Bearer (.+)$/i.exec(header || '');
-    if (!match) {
-        return false;
-    }
+    return !!match && safeEqual(match[1], token);
+}
+
+/**
+ * Compares two strings in constant time, also when their lengths differ
+ *
+ * @param {String} a First
+ * @param {String} b Second
+ * @return {Boolean} true if equal
+ */
+function safeEqual(a: string, b: string): boolean {
     const digest = (value: string) => crypto.createHash('sha256').update(value).digest();
-    return crypto.timingSafeEqual(digest(match[1]), digest(token));
+    return crypto.timingSafeEqual(digest(a), digest(b));
+}
+
+/**
+ * Reads a request body
+ *
+ * @param {Object} req HTTP request
+ * @param {Number} limit Largest body in octets
+ * @param {Function} tooBig Makes the error for a larger body
+ * @return {Promise<Buffer>} the body
+ */
+function readRaw(req: http.IncomingMessage, limit: number, tooBig: () => Error): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        req.on('data', (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > limit) {
+                reject(tooBig());
+                req.destroy();
+                return;
+            }
+            chunks.push(chunk);
+        });
+        req.on('error', reject);
+        req.on('end', () => resolve(Buffer.concat(chunks)));
+    });
 }
 
 /**
@@ -498,37 +532,21 @@ function hasToken(header: string | undefined, token: string): boolean {
  * @param {Object} req HTTP request
  * @return {Promise<Object>} the body, an empty object without one
  */
-function readBody(req: http.IncomingMessage): Promise<any> {
-    return new Promise((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        req.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > BODY_LIMIT) {
-                reject(storeError('Request body is larger than 64 MiB', 'TOOBIG'));
-                req.destroy();
-                return;
-            }
-            chunks.push(chunk);
-        });
-        req.on('error', reject);
-        req.on('end', () => {
-            const text = Buffer.concat(chunks).toString('utf-8');
-            if (!text) {
-                return resolve({});
-            }
-            let body: unknown;
-            try {
-                body = JSON.parse(text);
-            } catch {
-                return reject(storeError('Request body is not valid JSON', 'INVALID'));
-            }
-            if (!body || typeof body !== 'object') {
-                return reject(storeError('Request body must be a JSON object or array', 'INVALID'));
-            }
-            resolve(body);
-        });
-    });
+async function readBody(req: http.IncomingMessage): Promise<any> {
+    const text = (await readRaw(req, BODY_LIMIT, () => storeError('Request body is larger than 64 MiB', 'TOOBIG'))).toString('utf-8');
+    if (!text) {
+        return {};
+    }
+    let body: unknown;
+    try {
+        body = JSON.parse(text);
+    } catch {
+        throw storeError('Request body is not valid JSON', 'INVALID');
+    }
+    if (!body || typeof body !== 'object') {
+        throw storeError('Request body must be a JSON object or array', 'INVALID');
+    }
+    return body;
 }
 
 /**
@@ -606,5 +624,5 @@ function createRestServer(server: IMAPServer, options: RestOptions): RestServer 
     return rest;
 }
 
-export { createRestServer, isLoopback, getRoutes, openApi };
+export { createRestServer, isLoopback, safeEqual, readRaw, getRoutes, openApi };
 export type { RestOptions, RestServer };
