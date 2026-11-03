@@ -95,16 +95,16 @@
         "@types/smtp-server": "3.5.13",
         "buffer": "6.0.3",
         "esbuild": "0.28.2",
-        "eslint": "10.13.0",
+        "eslint": "10.14.0",
         "eslint-config-prettier": "10.1.8",
         "events": "3.3.0",
-        "globals": "17.13.0",
-        "imapflow": "2.5.6",
+        "globals": "17.14.0",
+        "imapflow": "2.10.0",
         "prettier": "3.9.10",
-        "smtp-server": "3.20.2",
+        "smtp-server": "3.21.3",
         "tsx": "4.23.15",
         "typescript": "6.0.3",
-        "typescript-eslint": "8.71.2"
+        "typescript-eslint": "8.72.1"
     },
     "engines": {
         "node": ">=20.0.0"

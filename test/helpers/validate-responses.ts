@@ -776,13 +776,16 @@ async function validateResponses(transcript: Buffer | string, options?: Validate
             fail('ImapFlow can not parse the response (' + (err as Error).message + ')', response.text);
         }
         if (parsed.numbers) {
-            // ImapFlow reads a plain SEARCH response into numbers and loses how each one was written ("01" becomes 1),
-            // the checks need the atoms as the server sent them. It does this only for single spaces and digits
-            parsed.attributes = response.payload
+            // ImapFlow reads the numbers of a SEARCH response into numbers and loses how each one was written ("01"
+            // becomes 1), the checks need the atoms as the server sent them. A (MODSEQ n) list after them stays in
+            // attributes (ImapFlow 2.10 and later), the atoms go in front of it
+            const atoms = response.payload
                 .toString('binary')
+                .split(' (')[0]
                 .split(' ')
                 .slice(2)
                 .map(value => ({ type: 'ATOM', value }));
+            parsed.attributes = (atoms as Attribute[]).concat(parsed.attributes || []);
             delete parsed.numbers;
         }
         checkResponse(response, parsed, utf8, uidonly);
