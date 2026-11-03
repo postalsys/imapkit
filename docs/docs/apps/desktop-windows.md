@@ -69,6 +69,7 @@ The banner at the top shows whether the server runs, and where. Stop and Start t
 - **Limits & ID:** limits that make the server refuse what goes over them, the largest message (APPENDLIMIT), a quota for storage and message count (QUOTA, optionally only a warning), the messages per command (MESSAGELIMIT or SAVELIMIT) and the largest literal. Each limit shows whether the extension it needs is turned on. Below them, the answer to the ID command: the server says `ID NIL` unless you fill in fields like `name` and `version` and turn them on, to look like a server a client knows.
 - **Faults:** [quirk presets](../faults/quirk-presets.md) that make the server behave like a known real server, and [script rules](../faults/scripted-faults.md) that make it misbehave on purpose, like dropping the connection or answering slowly.
 - **SMTP:** rules of the SMTP server, see [SMTP rules](#smtp-rules).
+- **OAuth:** a test OAuth 2.0 / OpenID Connect provider, so an email client can sign in through the browser, see [OAuth sign-in](#oauth-sign-in).
 - **REST API:** turns on the [REST API](../rest-api/overview.md) of ImapKit, so a test script can change the mailboxes while the app runs.
 
 ### SMTP rules
@@ -80,6 +81,20 @@ To test how an app handles mail that is refused:
 - **Require a login** answers `530` to a client that sends without logging in. All mail then goes to the [Outbox](#inbox-and-outbox).
 - **Largest message** is advertised with `SIZE`, larger mail gets `552`.
 - **Rejected recipients** is a table of addresses that `RCPT TO` refuses with the reply code and text of the row. `*` matches anything, so `*@blocked.test` refuses a whole domain. Add Row adds one, double-click a cell (or press F2) to edit it, Tab moves to the next cell.
+
+### OAuth sign-in
+
+![The OAuth tab with the clients and the tokens of a sign-in](/img/desktop/server-oauth.png)
+
+The OAuth tab turns on the [OAuth 2.0 and OpenID Connect provider](../guides/oauth.md) of ImapKit, for testing the sign-in of an email client without a real Google or Microsoft account. It needs no passwords: a sign-in shows a consent page in the browser where you pick an account and click Allow or Deny, or it is allowed or denied right away. The tokens log in to IMAP (XOAUTH2, OAUTHBEARER, which the tab turns on) and to SMTP (AUTH XOAUTH2).
+
+- **Issuer:** where the client finds the provider, its discovery document is at `<issuer>/.well-known/openid-configuration`. Copy puts it on the clipboard, Open shows the provider's page with the clients and users in the browser. The Email client settings box lists the issuer and a client ID too.
+- **Sign-ins:** what a sign-in does by default: **Ask** (the consent page), **Always allow** or **Always deny**.
+- **Access tokens last:** a short time, like 60 seconds, tests how the client refreshes them. With **Give a refresh token to every sign-in** checked the provider behaves like Google, otherwise refresh tokens come only for the `offline_access` scope.
+- **Clients:** the client IDs the provider knows, `imapkit`, `imapkit-approve` (always allows) and `imapkit-deny` (always denies) to begin with. Add a row for the client ID your app uses. Double-click a cell to change it: the Sign-in cell picks what a sign-in of that client does, an empty Redirect URIs cell accepts `127.0.0.1` and `localhost` on any port, which is what desktop apps use.
+- **While it runs:** **Next sign-in** answers only the next sign-in in a chosen way, to test the error paths of a client: denied, failing with `temporarily_unavailable` or `server_error`, a redirect with a wrong `state` or `iss`, or no redirect at all. The token list shows every token with its state, **Expire Access Tokens** makes the next login with them fail like an expired token, **Revoke All** like a revoked sign-in.
+
+The ID token names the account by its user name, and email clients log in with it, so add a test account named like an address, such as `alice@example.com`. The tab says so while no account is named like one. Every step of a sign-in is logged on the Connections page, as lines of the `oauth` session.
 
 ## The Connections page
 
