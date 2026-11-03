@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.1](https://github.com/postalsys/imapkit/compare/v5.3.0...v5.3.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* consent page keeps scope names on one line, clearer request details and footer ([ead3b9b](https://github.com/postalsys/imapkit/commit/ead3b9b1744e9b85f36abd8b1f66153a4d8115ef))
+
 ## [5.3.0](https://github.com/postalsys/imapkit/compare/v5.2.0...v5.3.0) (2026-11-03)
 
 
