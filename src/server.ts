@@ -1024,7 +1024,11 @@ class IMAPServer extends Stream {
         const levels = mailbox.path.split(storage.separator);
         const folderName = levels.pop() as string;
         const parentKey = levels.join(storage.separator);
-        const parent: Namespace | Mailbox = (parentKey !== 'INBOX' && this.folderCache[parentKey]) || storage;
+        // A child of INBOX lives in INBOX's own folders, unless the personal namespace is "INBOX." itself, where its
+        // mailboxes are the namespace's
+        const inboxParent = parentKey.toUpperCase() === 'INBOX';
+        const holdsNamespace = namespace === this.referenceNamespace && this.inboxHoldsNamespace();
+        const parent: Namespace | Mailbox = ((!inboxParent || !holdsNamespace) && this.folderCache[parentKey]) || storage;
 
         if (mailbox.folders && Object.keys(mailbox.folders).length && !keepContents) {
             // Sessions that have the mailbox selected keep the old object, a new SELECT finds the
