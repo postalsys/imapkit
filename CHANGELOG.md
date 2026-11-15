@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.3.2](https://github.com/postalsys/imapkit/compare/v5.3.1...v5.3.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* DELETE of a mailbox inside INBOX removes it from INBOX ([3d036ac](https://github.com/postalsys/imapkit/commit/3d036ac7532e6cc2ced350c94036b069f5f498d2))
+* DELETE of a mailbox inside INBOX removes it from INBOX ([93b721d](https://github.com/postalsys/imapkit/commit/93b721d4d029b98a79d9ae7cc7075e4fe7864904))
+
 ## [5.3.1](https://github.com/postalsys/imapkit/compare/v5.3.0...v5.3.1) (2026-11-03)
 
 
