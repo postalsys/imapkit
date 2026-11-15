@@ -141,3 +141,35 @@ describe('DELETE of a mailbox with children', () => {
         });
     });
 });
+
+describe('DELETE of a mailbox inside INBOX', () => {
+    const ctx = setupServer(() => ({
+        storage: {
+            INBOX: {},
+            '': {
+                folders: {}
+            }
+        }
+    }));
+
+    it('a child of INBOX is gone from LIST once deleted, and INBOX has no children again', (t, done) => {
+        const cmds = [
+            'A1 LOGIN testuser testpass',
+            'A2 CREATE INBOX/Receipts',
+            'A3 DELETE INBOX/Receipts',
+            'A4 LIST "" "*"',
+            'A5 CREATE Other',
+            'A6 LIST "" "*"',
+            'ZZ LOGOUT'
+        ];
+
+        ctx.run(cmds, resp => {
+            resp = resp.toString();
+            assert.ok(resp.indexOf('\nA2 OK') >= 0, resp);
+            assert.ok(resp.indexOf('\nA3 OK') >= 0, resp);
+            assert.ok(!/LIST \([^)]*\) "\/" "?INBOX\/Receipts"?/.test(resp.slice(resp.indexOf('A3 OK'))), resp);
+            assert.ok(/LIST \(\\HasNoChildren\) "\/" "?INBOX"?/i.test(resp.slice(resp.indexOf('A3 OK'))), resp);
+            done();
+        });
+    });
+});
